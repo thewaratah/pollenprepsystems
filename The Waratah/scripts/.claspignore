@@ -1,0 +1,29 @@
+# Airtable-only scripts (not needed in GAS deployment)
+# These run INSIDE Airtable automations, not in Google Apps Script
+Waratah_ClearWeeklyCount.gs
+Waratah_FinaliseCount.gs
+Waratah_GeneratePrepRun.gs
+Waratah_GeneratePrepSheet.gs
+Waratah_GeneratePrepSheet_TimeBasedPolling.gs
+Waratah_InitStockCount.gs
+Waratah_ValidateStockCount.gs
+Waratah_GenerateStockOrders.gs
+
+# Debug utilities (manual testing only — not for production)
+Debug.gs
+
+# Python scripts
+*.py
+
+# SQL files
+*.sql
+
+# Shell scripts
+*.sh
+
+# Node.js migration scripts (belong to knowledge platform, not GAS)
+setup/**
+
+# Other excludes
+.clasp.json
+.claspignore

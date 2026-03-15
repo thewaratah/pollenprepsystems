@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      padding: 16px;
+      background: #f5f5f5;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 500px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin: 0 0 8px 0;
+      font-size: 28px;
+      color: #333;
+    }
+
+    .subtitle {
+      margin: 0 0 20px 0;
+      color: #666;
+      font-size: 14px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .card h2 {
+      margin: 0 0 16px 0;
+      font-size: 18px;
+      color: #333;
+    }
+
+    .error {
+      background: #fee;
+      color: #c00;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      display: none;
+    }
+
+    .error.show {
+      display: block;
+    }
+
+    label {
+      display: block;
+      font-weight: 500;
+      margin-bottom: 6px;
+      color: #333;
+      font-size: 14px;
+    }
+
+    .required::after {
+      content: ' *';
+      color: #c00;
+    }
+
+    select, input[type="text"], textarea {
+      width: 100%;
+      padding: 12px;
+      font-size: 16px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      background: white;
+      -webkit-appearance: none;
+    }
+
+    select:focus, input:focus, textarea:focus {
+      outline: none;
+      border-color: #007AFF;
+      box-shadow: 0 0 0 3px rgba(0,122,255,0.1);
+    }
+
+    textarea {
+      min-height: 120px;
+      resize: vertical;
+      font-family: inherit;
+    }
+
+    .btn-primary {
+      width: 100%;
+      padding: 14px;
+      font-size: 16px;
+      font-weight: 600;
+      background: #007AFF;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn-primary:hover {
+      background: #0056b3;
+    }
+
+    .btn-primary:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      width: 100%;
+      padding: 14px;
+      font-size: 16px;
+      font-weight: 600;
+      background: #f5f5f5;
+      color: #333;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-top: 12px;
+    }
+
+    .context-info {
+      background: #f8f9fa;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      color: #666;
+    }
+
+    .context-info strong {
+      color: #333;
+    }
+
+    .context-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+
+    .context-row:last-child {
+      margin-bottom: 0;
+    }
+
+    /* Autocomplete styles */
+    .autocomplete-container {
+      position: relative;
+      margin-bottom: 16px;
+    }
+
+    .autocomplete-container input {
+      margin-bottom: 0;
+    }
+
+    .autocomplete-list {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: white;
+      border: 1px solid #ddd;
+      border-top: none;
+      border-radius: 0 0 8px 8px;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 1000;
+      display: none;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    .autocomplete-list.show {
+      display: block;
+    }
+
+    .autocomplete-item {
+      padding: 12px;
+      cursor: pointer;
+      border-bottom: 1px solid #eee;
+    }
+
+    .autocomplete-item:last-child {
+      border-bottom: none;
+    }
+
+    .autocomplete-item:hover, .autocomplete-item.selected {
+      background: #f5f5f5;
+    }
+
+    .autocomplete-item .item-name {
+      font-weight: 500;
+      color: #333;
+    }
+
+    .selected-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #e8f4ff;
+      padding: 8px 12px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+    }
+
+    .selected-item .name {
+      font-weight: 500;
+      color: #007AFF;
+    }
+
+    .selected-item .clear {
+      background: none;
+      border: none;
+      color: #999;
+      cursor: pointer;
+      font-size: 18px;
+      padding: 0 4px;
+    }
+
+    .selected-item .clear:hover {
+      color: #c00;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    /* Success state */
+    .success-card {
+      text-align: center;
+      display: none;
+    }
+
+    .success-card.show {
+      display: block;
+    }
+
+    .success-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    .success-card h2 {
+      color: #28a745;
+    }
+
+    .ai-result {
+      background: #f8f9fa;
+      padding: 12px;
+      border-radius: 8px;
+      margin: 16px 0;
+      text-align: left;
+    }
+
+    .ai-result .category {
+      font-weight: 600;
+      color: #007AFF;
+    }
+
+    .ai-result .suggestion {
+      margin-top: 8px;
+      font-size: 14px;
+      color: #666;
+    }
+
+    /* Loading spinner */
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 20px;
+    }
+
+    .loading.show {
+      display: block;
+    }
+
+    .spinner {
+      width: 24px;
+      height: 24px;
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #007AFF;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 12px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    /* Responsive */
+    @media (max-width: 400px) {
+      body {
+        padding: 12px;
+      }
+      .card {
+        padding: 16px;
+      }
+      h1 {
+        font-size: 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Prep Feedback</h1>
+    <p class="subtitle">Help us improve the prep system</p>
+
+    <div class="error" id="error"></div>
+
+    <!-- Context Card -->
+    <div class="card" id="context-card">
+      <div class="context-info" id="context-info">
+        <div class="context-row">
+          <span>Loading context...</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Form Card -->
+    <div class="card" id="form-card">
+      <h2>Your Feedback</h2>
+
+      <label for="staff-name" class="required">Your Name</label>
+      <input type="text" id="staff-name" placeholder="Enter your name">
+
+      <label for="staff-role">Your Role</label>
+      <select id="staff-role">
+        <option value="">Select role...</option>
+      </select>
+
+      <label for="feedback-type" class="required">Feedback Type</label>
+      <select id="feedback-type" onchange="onFeedbackTypeChange()">
+        <option value="">Select type...</option>
+      </select>
+
+      <label for="description" class="required">Description</label>
+      <textarea id="description" placeholder="Describe the issue or suggestion in detail..."></textarea>
+
+      <!-- Item Reference (conditional) -->
+      <div id="item-ref-section" class="hidden">
+        <label for="item-search">Item Reference (optional)</label>
+        <div id="item-selected" class="selected-item hidden">
+          <span class="name" id="item-selected-name"></span>
+          <button class="clear" onclick="clearItemSelection()">&times;</button>
+        </div>
+        <div class="autocomplete-container" id="item-autocomplete">
+          <input type="text" id="item-search" placeholder="Search for an item..." oninput="onItemSearch()" onfocus="onItemSearchFocus()">
+          <div class="autocomplete-list" id="item-list"></div>
+        </div>
+        <input type="hidden" id="item-ref-id">
+      </div>
+
+      <!-- Recipe Reference (conditional) -->
+      <div id="recipe-ref-section" class="hidden">
+        <label for="recipe-search">Recipe Reference (optional)</label>
+        <div id="recipe-selected" class="selected-item hidden">
+          <span class="name" id="recipe-selected-name"></span>
+          <button class="clear" onclick="clearRecipeSelection()">&times;</button>
+        </div>
+        <div class="autocomplete-container" id="recipe-autocomplete">
+          <input type="text" id="recipe-search" placeholder="Search for a recipe..." oninput="onRecipeSearch()" onfocus="onRecipeSearchFocus()">
+          <div class="autocomplete-list" id="recipe-list"></div>
+        </div>
+        <input type="hidden" id="recipe-ref-id">
+      </div>
+
+      <button class="btn-primary" onclick="submitFeedback()" id="submit-btn">
+        Submit Feedback
+      </button>
+    </div>
+
+    <!-- Loading Card -->
+    <div class="card loading" id="loading-card">
+      <div class="spinner"></div>
+      <p>Submitting feedback...</p>
+    </div>
+
+    <!-- Success Card -->
+    <div class="card success-card" id="success-card">
+      <div class="success-icon">&#10003;</div>
+      <h2>Thank You!</h2>
+      <p>Your feedback has been submitted and will be reviewed.</p>
+
+      <div class="ai-result" id="ai-result">
+        <div>AI Category: <span class="category" id="ai-category"></span></div>
+        <div class="suggestion" id="ai-suggestion"></div>
+      </div>
+
+      <button class="btn-primary" onclick="resetForm()">Submit Another</button>
+      <button class="btn-secondary" onclick="closeWindow()">Close</button>
+    </div>
+  </div>
+
+  <script>
+    // Pre-filled values from URL parameters (injected by server)
+    const prefilledPrepRunId = '<?= prepRunId ?>';
+    const prefilledDocType = '<?= docType ?>';
+    const prefilledStaffRole = '<?= staffRole ?>';
+
+    // State
+    let formConfig = null;
+    let prepRunDetails = null;
+    let itemSearchTimeout = null;
+    let recipeSearchTimeout = null;
+
+    // Initialize on DOM ready
+    document.addEventListener('DOMContentLoaded', init);
+
+    function init() {
+      loadFormConfig();
+      if (prefilledPrepRunId) {
+        loadPrepRunDetails();
+      } else {
+        updateContextDisplay();
+      }
+    }
+
+    // =========================================================================
+    // Data Loading
+    // =========================================================================
+
+    function loadFormConfig() {
+      google.script.run
+        .withSuccessHandler(function(config) {
+          formConfig = config;
+          populateDropdowns();
+        })
+        .withFailureHandler(function(err) {
+          showError('Failed to load form: ' + err.message);
+        })
+        .getFormConfig();
+    }
+
+    function loadPrepRunDetails() {
+      google.script.run
+        .withSuccessHandler(function(details) {
+          prepRunDetails = details;
+          updateContextDisplay();
+        })
+        .withFailureHandler(function(err) {
+          // Non-critical, just update display without prep run info
+          updateContextDisplay();
+        })
+        .getPrepRunDetails(prefilledPrepRunId);
+    }
+
+    function populateDropdowns() {
+      // Staff role dropdown
+      const roleSelect = document.getElementById('staff-role');
+      roleSelect.innerHTML = '<option value="">Select role...</option>';
+      formConfig.staffRoles.forEach(function(role) {
+        const option = document.createElement('option');
+        option.value = role;
+        option.textContent = role;
+        if (role === prefilledStaffRole) {
+          option.selected = true;
+        }
+        roleSelect.appendChild(option);
+      });
+
+      // Feedback type dropdown
+      const typeSelect = document.getElementById('feedback-type');
+      typeSelect.innerHTML = '<option value="">Select type...</option>';
+      formConfig.feedbackTypes.forEach(function(type) {
+        const option = document.createElement('option');
+        option.value = type;
+        option.textContent = type;
+        typeSelect.appendChild(option);
+      });
+    }
+
+    function updateContextDisplay() {
+      const contextInfo = document.getElementById('context-info');
+      let html = '';
+
+      if (prefilledDocType) {
+        html += '<div class="context-row"><span>Document:</span><strong>' + escapeHtml(prefilledDocType) + '</strong></div>';
+      }
+
+      if (prepRunDetails && prepRunDetails.label) {
+        html += '<div class="context-row"><span>Prep Run:</span><strong>' + escapeHtml(prepRunDetails.label) + '</strong></div>';
+      } else if (prefilledPrepRunId) {
+        html += '<div class="context-row"><span>Prep Run ID:</span><strong>' + escapeHtml(prefilledPrepRunId) + '</strong></div>';
+      }
+
+      if (!html) {
+        html = '<div class="context-row"><span>General feedback (no specific document)</span></div>';
+      }
+
+      contextInfo.innerHTML = html;
+    }
+
+    // =========================================================================
+    // Form Interactions
+    // =========================================================================
+
+    function onFeedbackTypeChange() {
+      const type = document.getElementById('feedback-type').value;
+      const itemSection = document.getElementById('item-ref-section');
+      const recipeSection = document.getElementById('recipe-ref-section');
+
+      // Show/hide based on feedback type
+      if (type === 'Missing Data') {
+        itemSection.classList.remove('hidden');
+        recipeSection.classList.add('hidden');
+      } else if (type === 'Recipe Issue') {
+        itemSection.classList.remove('hidden');
+        recipeSection.classList.remove('hidden');
+      } else {
+        itemSection.classList.add('hidden');
+        recipeSection.classList.add('hidden');
+      }
+    }
+
+    // =========================================================================
+    // Item Autocomplete
+    // =========================================================================
+
+    function onItemSearch() {
+      clearTimeout(itemSearchTimeout);
+      const query = document.getElementById('item-search').value;
+
+      if (query.length < 2) {
+        document.getElementById('item-list').classList.remove('show');
+        return;
+      }
+
+      itemSearchTimeout = setTimeout(function() {
+        google.script.run
+          .withSuccessHandler(showItemResults)
+          .withFailureHandler(function(err) {
+            console.error('Item search failed:', err);
+          })
+          .searchItems(query);
+      }, 300);
+    }
+
+    function onItemSearchFocus() {
+      const query = document.getElementById('item-search').value;
+      if (query.length >= 2) {
+        onItemSearch();
+      }
+    }
+
+    function showItemResults(items) {
+      const list = document.getElementById('item-list');
+
+      if (!items || items.length === 0) {
+        list.innerHTML = '<div class="autocomplete-item"><em>No items found</em></div>';
+        list.classList.add('show');
+        return;
+      }
+
+      list.innerHTML = items.map(function(item) {
+        return '<div class="autocomplete-item" onclick="selectItem(\'' + item.id + '\', \'' + escapeHtml(item.name).replace(/'/g, "\\'") + '\')">' +
+               '<span class="item-name">' + escapeHtml(item.name) + '</span>' +
+               '</div>';
+      }).join('');
+
+      list.classList.add('show');
+    }
+
+    function selectItem(id, name) {
+      document.getElementById('item-ref-id').value = id;
+      document.getElementById('item-selected-name').textContent = name;
+      document.getElementById('item-selected').classList.remove('hidden');
+      document.getElementById('item-autocomplete').classList.add('hidden');
+      document.getElementById('item-list').classList.remove('show');
+    }
+
+    function clearItemSelection() {
+      document.getElementById('item-ref-id').value = '';
+      document.getElementById('item-search').value = '';
+      document.getElementById('item-selected').classList.add('hidden');
+      document.getElementById('item-autocomplete').classList.remove('hidden');
+    }
+
+    // =========================================================================
+    // Recipe Autocomplete
+    // =========================================================================
+
+    function onRecipeSearch() {
+      clearTimeout(recipeSearchTimeout);
+      const query = document.getElementById('recipe-search').value;
+
+      if (query.length < 2) {
+        document.getElementById('recipe-list').classList.remove('show');
+        return;
+      }
+
+      recipeSearchTimeout = setTimeout(function() {
+        google.script.run
+          .withSuccessHandler(showRecipeResults)
+          .withFailureHandler(function(err) {
+            console.error('Recipe search failed:', err);
+          })
+          .searchRecipes(query);
+      }, 300);
+    }
+
+    function onRecipeSearchFocus() {
+      const query = document.getElementById('recipe-search').value;
+      if (query.length >= 2) {
+        onRecipeSearch();
+      }
+    }
+
+    function showRecipeResults(recipes) {
+      const list = document.getElementById('recipe-list');
+
+      if (!recipes || recipes.length === 0) {
+        list.innerHTML = '<div class="autocomplete-item"><em>No recipes found</em></div>';
+        list.classList.add('show');
+        return;
+      }
+
+      list.innerHTML = recipes.map(function(recipe) {
+        return '<div class="autocomplete-item" onclick="selectRecipe(\'' + recipe.id + '\', \'' + escapeHtml(recipe.name).replace(/'/g, "\\'") + '\')">' +
+               '<span class="item-name">' + escapeHtml(recipe.name) + '</span>' +
+               '</div>';
+      }).join('');
+
+      list.classList.add('show');
+    }
+
+    function selectRecipe(id, name) {
+      document.getElementById('recipe-ref-id').value = id;
+      document.getElementById('recipe-selected-name').textContent = name;
+      document.getElementById('recipe-selected').classList.remove('hidden');
+      document.getElementById('recipe-autocomplete').classList.add('hidden');
+      document.getElementById('recipe-list').classList.remove('show');
+    }
+
+    function clearRecipeSelection() {
+      document.getElementById('recipe-ref-id').value = '';
+      document.getElementById('recipe-search').value = '';
+      document.getElementById('recipe-selected').classList.add('hidden');
+      document.getElementById('recipe-autocomplete').classList.remove('hidden');
+    }
+
+    // =========================================================================
+    // Form Submission
+    // =========================================================================
+
+    function submitFeedback() {
+      // Hide any previous errors
+      hideError();
+
+      // Validate
+      const staffName = document.getElementById('staff-name').value.trim();
+      const feedbackType = document.getElementById('feedback-type').value;
+      const description = document.getElementById('description').value.trim();
+
+      if (!staffName) {
+        showError('Please enter your name');
+        document.getElementById('staff-name').focus();
+        return;
+      }
+      if (!feedbackType) {
+        showError('Please select a feedback type');
+        document.getElementById('feedback-type').focus();
+        return;
+      }
+      if (!description) {
+        showError('Please enter a description');
+        document.getElementById('description').focus();
+        return;
+      }
+
+      // Collect data
+      const feedbackData = {
+        staffName: staffName,
+        staffRole: document.getElementById('staff-role').value,
+        feedbackType: feedbackType,
+        description: description,
+        docType: prefilledDocType,
+        prepRunId: prefilledPrepRunId,
+        itemReferenceId: document.getElementById('item-ref-id').value,
+        itemReferenceName: document.getElementById('item-selected-name').textContent || null,
+        recipeReferenceId: document.getElementById('recipe-ref-id').value,
+        recipeReferenceName: document.getElementById('recipe-selected-name').textContent || null
+      };
+
+      // Show loading
+      document.getElementById('form-card').classList.add('hidden');
+      document.getElementById('loading-card').classList.add('show');
+
+      // Submit
+      google.script.run
+        .withSuccessHandler(onSubmitSuccess)
+        .withFailureHandler(onSubmitError)
+        .submitFeedback(feedbackData);
+    }
+
+    function onSubmitSuccess(result) {
+      document.getElementById('loading-card').classList.remove('show');
+
+      // Show AI results
+      document.getElementById('ai-category').textContent = result.aiCategory || 'General';
+      document.getElementById('ai-suggestion').textContent = result.aiSuggestion || '';
+
+      // Show success card
+      document.getElementById('success-card').classList.add('show');
+    }
+
+    function onSubmitError(err) {
+      document.getElementById('loading-card').classList.remove('show');
+      document.getElementById('form-card').classList.remove('hidden');
+      showError(err.message || 'Failed to submit feedback. Please try again.');
+    }
+
+    // =========================================================================
+    // UI Helpers
+    // =========================================================================
+
+    function showError(message) {
+      const errorDiv = document.getElementById('error');
+      errorDiv.textContent = message;
+      errorDiv.classList.add('show');
+
+      // Auto-hide after 5 seconds
+      setTimeout(function() {
+        hideError();
+      }, 5000);
+    }
+
+    function hideError() {
+      document.getElementById('error').classList.remove('show');
+    }
+
+    function resetForm() {
+      // Reset form fields
+      document.getElementById('staff-name').value = '';
+      document.getElementById('staff-role').value = prefilledStaffRole || '';
+      document.getElementById('feedback-type').value = '';
+      document.getElementById('description').value = '';
+
+      // Clear selections
+      clearItemSelection();
+      clearRecipeSelection();
+
+      // Hide conditional sections
+      document.getElementById('item-ref-section').classList.add('hidden');
+      document.getElementById('recipe-ref-section').classList.add('hidden');
+
+      // Show form, hide success
+      document.getElementById('success-card').classList.remove('show');
+      document.getElementById('form-card').classList.remove('hidden');
+    }
+
+    function closeWindow() {
+      // Try to close the window/tab
+      google.script.host.close();
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Close autocomplete lists when clicking outside
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('#item-autocomplete')) {
+        document.getElementById('item-list').classList.remove('show');
+      }
+      if (!e.target.closest('#recipe-autocomplete')) {
+        document.getElementById('recipe-list').classList.remove('show');
+      }
+    });
+  </script>
+</body>
+</html>

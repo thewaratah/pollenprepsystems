@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      padding: 16px;
+      background: #f5f5f5;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 500px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 24px;
+      margin: 0 0 8px 0;
+      color: #333;
+    }
+
+    .subtitle {
+      color: #666;
+      margin-bottom: 24px;
+      font-size: 14px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .card h2 {
+      font-size: 16px;
+      margin: 0 0 16px 0;
+      color: #333;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      color: #555;
+      margin-bottom: 6px;
+    }
+
+    select, input {
+      width: 100%;
+      padding: 12px;
+      font-size: 16px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      background: white;
+    }
+
+    select:focus, input:focus {
+      outline: none;
+      border-color: #007AFF;
+      box-shadow: 0 0 0 3px rgba(0,122,255,0.1);
+    }
+
+    button {
+      width: 100%;
+      padding: 14px;
+      font-size: 16px;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn-primary {
+      background: #007AFF;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #0056b3;
+    }
+
+    .btn-primary:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    .result {
+      display: none;
+    }
+
+    .result.show {
+      display: block;
+    }
+
+    .result-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #eee;
+    }
+
+    .result-yield {
+      text-align: right;
+    }
+
+    .result-yield .label {
+      font-size: 12px;
+      color: #666;
+    }
+
+    .result-yield .value {
+      font-size: 24px;
+      font-weight: 700;
+      color: #007AFF;
+    }
+
+    .scale-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      background: #e8f4fd;
+      color: #007AFF;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .ingredient-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .ingredient-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .ingredient-item:last-child {
+      border-bottom: none;
+    }
+
+    .ingredient-name {
+      font-weight: 500;
+      color: #333;
+    }
+
+    .ingredient-qty {
+      text-align: right;
+    }
+
+    .ingredient-qty .scaled {
+      font-size: 18px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .ingredient-qty .original {
+      font-size: 12px;
+      color: #999;
+      text-decoration: line-through;
+    }
+
+    .constraint-badge {
+      background: #fff3cd;
+      color: #856404;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      margin-left: 8px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+
+    .error {
+      background: #fee;
+      color: #c00;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      display: none;
+    }
+
+    .error.show {
+      display: block;
+    }
+
+    @media (max-width: 400px) {
+      body {
+        padding: 12px;
+      }
+
+      .card {
+        padding: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🍸 Recipe Scaler</h1>
+    <p class="subtitle">Scale recipes based on available ingredients</p>
+
+    <div class="error" id="error"></div>
+
+    <!-- Recipe Selection -->
+    <div class="card" id="recipe-card">
+      <h2>📋 Select Recipe</h2>
+
+      <label for="recipe-select">Recipe</label>
+      <select id="recipe-select" onchange="onRecipeChange()">
+        <option value="">Loading recipes...</option>
+      </select>
+
+      <div id="ingredients-section" style="display: none;">
+        <label for="ingredient-select">Constraining Ingredient</label>
+        <select id="ingredient-select">
+          <option value="">Select ingredient...</option>
+        </select>
+
+        <label for="available-qty">Available Quantity</label>
+        <input type="number" id="available-qty" placeholder="e.g., 4" step="any" min="0">
+
+        <button class="btn-primary" onclick="calculate()" id="calc-btn">
+          Calculate Scaled Recipe
+        </button>
+      </div>
+
+      <div class="loading" id="loading" style="display: none;">
+        Loading recipe details...
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div class="card result" id="result-card">
+      <h2>✨ Scaled Recipe</h2>
+
+      <div class="result-header">
+        <div>
+          <div id="result-name" style="font-weight: 600; font-size: 18px;"></div>
+          <span class="scale-badge" id="scale-badge"></span>
+        </div>
+        <div class="result-yield">
+          <div class="label">Makes</div>
+          <div class="value" id="result-yield"></div>
+        </div>
+      </div>
+
+      <ul class="ingredient-list" id="ingredient-list">
+        <!-- Populated by JS -->
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    // Pre-filled values from URL
+    const prefilledRecipeName = '<?= recipeName ?>';
+    const prefilledRecipeId = '<?= recipeId ?>';
+
+    let currentRecipe = null;
+
+    // Initialise on load
+    document.addEventListener('DOMContentLoaded', init);
+
+    function init() {
+      loadRecipes();
+    }
+
+    function showError(message) {
+      const el = document.getElementById('error');
+      el.textContent = message;
+      el.classList.add('show');
+      setTimeout(() => el.classList.remove('show'), 5000);
+    }
+
+    function loadRecipes() {
+      google.script.run
+        .withSuccessHandler(recipes => {
+          const select = document.getElementById('recipe-select');
+          select.innerHTML = '<option value="">Select a recipe...</option>';
+
+          recipes.forEach(r => {
+            const option = document.createElement('option');
+            option.value = r.id;
+            option.textContent = r.name;
+            select.appendChild(option);
+          });
+
+          // Pre-select if URL parameter provided
+          if (prefilledRecipeId) {
+            select.value = prefilledRecipeId;
+            onRecipeChange();
+          } else if (prefilledRecipeName) {
+            // Find by name
+            const match = recipes.find(r =>
+              r.name.toLowerCase().includes(prefilledRecipeName.toLowerCase())
+            );
+            if (match) {
+              select.value = match.id;
+              onRecipeChange();
+            }
+          }
+        })
+        .withFailureHandler(err => {
+          showError('Failed to load recipes: ' + err.message);
+        })
+        .getRecipeList();
+    }
+
+    function onRecipeChange() {
+      const recipeId = document.getElementById('recipe-select').value;
+      if (!recipeId) {
+        document.getElementById('ingredients-section').style.display = 'none';
+        document.getElementById('result-card').classList.remove('show');
+        return;
+      }
+
+      document.getElementById('loading').style.display = 'block';
+      document.getElementById('ingredients-section').style.display = 'none';
+
+      google.script.run
+        .withSuccessHandler(recipe => {
+          currentRecipe = recipe;
+          document.getElementById('loading').style.display = 'none';
+          document.getElementById('ingredients-section').style.display = 'block';
+
+          // Populate ingredients dropdown
+          const select = document.getElementById('ingredient-select');
+          select.innerHTML = '<option value="">Select constraining ingredient...</option>';
+
+          recipe.ingredients.forEach(ing => {
+            const option = document.createElement('option');
+            option.value = ing.id;
+            option.textContent = `${ing.name} (${ing.qty}${ing.unit})`;
+            select.appendChild(option);
+          });
+
+          // Clear previous results
+          document.getElementById('result-card').classList.remove('show');
+          document.getElementById('available-qty').value = '';
+        })
+        .withFailureHandler(err => {
+          document.getElementById('loading').style.display = 'none';
+          showError('Failed to load recipe: ' + err.message);
+        })
+        .getRecipeDetails(recipeId);
+    }
+
+    function calculate() {
+      const recipeId = document.getElementById('recipe-select').value;
+      const ingredientId = document.getElementById('ingredient-select').value;
+      const availableQty = parseFloat(document.getElementById('available-qty').value);
+
+      if (!recipeId || !ingredientId || isNaN(availableQty)) {
+        showError('Please select a recipe, ingredient, and enter available quantity');
+        return;
+      }
+
+      const btn = document.getElementById('calc-btn');
+      btn.disabled = true;
+      btn.textContent = 'Calculating...';
+
+      google.script.run
+        .withSuccessHandler(result => {
+          btn.disabled = false;
+          btn.textContent = 'Calculate Scaled Recipe';
+          displayResult(result);
+        })
+        .withFailureHandler(err => {
+          btn.disabled = false;
+          btn.textContent = 'Calculate Scaled Recipe';
+          showError('Calculation failed: ' + err.message);
+        })
+        .calculateScaledRecipe(recipeId, ingredientId, availableQty);
+    }
+
+    function displayResult(result) {
+      document.getElementById('result-name').textContent = result.recipeName;
+      document.getElementById('scale-badge').textContent = `${result.scalePercent}% scale`;
+      document.getElementById('result-yield').textContent = `${result.scaledYield}ml`;
+
+      const list = document.getElementById('ingredient-list');
+      list.innerHTML = '';
+
+      result.ingredients.forEach(ing => {
+        const li = document.createElement('li');
+        li.className = 'ingredient-item';
+        li.innerHTML = `
+          <div class="ingredient-name">
+            ${ing.name}
+            ${ing.isConstraint ? '<span class="constraint-badge">CONSTRAINT</span>' : ''}
+          </div>
+          <div class="ingredient-qty">
+            <div class="scaled">${ing.scaledQty}${ing.unit}</div>
+            ${ing.scaledQty !== ing.originalQty ?
+              `<div class="original">${ing.originalQty}${ing.unit}</div>` : ''}
+          </div>
+        `;
+        list.appendChild(li);
+      });
+
+      document.getElementById('result-card').classList.add('show');
+
+      // Scroll to results
+      document.getElementById('result-card').scrollIntoView({ behavior: 'smooth' });
+    }
+  </script>
+</body>
+</html>

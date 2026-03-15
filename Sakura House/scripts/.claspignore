@@ -1,0 +1,8 @@
+# Airtable automation scripts (local backups only - not for Google Apps Script)
+ClearWeeklyCount.gs
+FinaliseCount.gs
+GeneratePrepRun.gs
+GeneratePrepSheet.gs
+
+# Legacy/test files
+GoogleDocsPrepSystem_TestHarness.gs

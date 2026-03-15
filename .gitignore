@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+.next/
+
+# Reference directories (large, not source code)
+Reference/
+Sakura House/Reference/
+
+# Environment files and secrets
+.env
+.env.local
+.env.production
+.env*.local
+**/config/GoogleDocsPrepSystemScriptProperties
+**/config/ScriptProperties
+**/config/airtableautomationURLs
+**/scripts/dev/
+**/scripts/rag_query.py
+**/scripts/rag_ingest.py
+**/docs/plans/2026-02-12-waratah-prep-migration.md
+**/docs/plans/IMPLEMENTATION-ROADMAP.md
+
+# Vercel
+.vercel/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Claude/IDE
+.claude/
+
+# Logs
+*.log
+
+# Visual assets (large binaries)
+**/SakuraHouseVisualAssets/
+**/WaratahVisualAssets/
+
+# Archives
+docs/archive/

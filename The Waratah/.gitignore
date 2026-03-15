@@ -1,0 +1,68 @@
+# Sensitive configuration files
+config/GoogleDocsPrepSystemScriptProperties
+config/airtableautomationURLs
+config/*.secret
+config/*.key
+
+# Environment files (contain API keys)
+.env
+.env.local
+.env*.local
+**/.env
+**/.env.local
+
+# External cloned repositories (re-clone as needed)
+reference/
+DeepClaude/
+SuperClaude_Framework/
+awesome-claude-code-subagents/
+awesome-llm-apps/
+claude-code-templates/
+claude-flow/
+supabase-js/
+supabase-mcp/
+
+# Large data files (should be ingested, not committed)
+RAGFiles/
+KnowledgeBase/
+
+# Source assets (extracted to prep-knowledge-platform/public/brand/)
+SakuraHouseVisualAssets/
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Node modules
+node_modules/
+**/node_modules/
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Next.js
+.next/
+out/
+
+# Build outputs
+build/
+dist/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
