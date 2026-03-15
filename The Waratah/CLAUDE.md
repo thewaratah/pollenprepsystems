@@ -201,6 +201,35 @@ Same as Sakura House (see [main CLAUDE.md](../CLAUDE.md#workflow)):
 
 ## Recent Changes
 
+### 2026-03-16 — Production Volume Bug Fix, Doc Layout Changes, Secrets Scrub & Git Init
+
+**`Waratah_GeneratePrepRun.gs` — Sub-recipe production volume fix (Airtable script, manual paste required):**
+- Pass 2 sub-recipe task finalization now uses `Math.max(demandBased, parBased)` instead of just `demandBased` — ensures sub-recipe items with their own par levels are never under-produced when parent demand is lower than the par deficit
+
+**`GoogleDocsPrepSystem.gs` — Par/stock lines removed (deployed via clasp push):**
+- `insertParStockLines_` and `appendParStockLines_` are now no-ops (function bodies emptied)
+- Documents no longer show "Par Level", "Stock Counted", "Parent Ingredient", or "Required Parent Batch QTY" lines
+- All 4 document types affected (Batching, Ingredient Prep, and both ordering docs)
+
+**`GoogleDocsPrepSystem.gs` — "Additional Tasks" section added:**
+- HEADING2 "Additional Tasks" + 10 blank lines appended after the feedback link on Batching and Ingredient Prep docs only (not ordering docs)
+- Added across all 4 code paths: 2 doc types x template path + programmatic fallback path
+
+**CLAUDE.md secrets scrubbed for GitHub push protection:**
+- API keys (OpenAI, Anthropic, Airtable PAT, Recipe Sync Secret) replaced with `<see .env.local>` or `<stored in GAS Script Properties>` placeholders
+- Applies to both `The Waratah/CLAUDE.md` and `Sakura House/CLAUDE.md`
+
+**Git repository initialized:**
+- Initial commit pushed to `https://github.com/thewaratah/pollenprepsystems.git`
+- `.gitignore` excludes: `Reference/`, `node_modules/`, `.env*` files, `config/secrets` files, visual assets, RAG scripts, `.claude/` directory
+
+**Key notes for future sessions:**
+- `insertParStockLines_` and `appendParStockLines_` still exist as functions but are no-ops — do not re-add par/stock/parent lines without explicit instruction
+- "Additional Tasks" section only appears on Batching and Ingredient Prep docs, never on ordering docs
+- Repo is now tracked at `https://github.com/thewaratah/pollenprepsystems.git`
+
+---
+
 ### 2026-03-03 — Reference Directory Cleanup & GoogleDocsPrepSystem Breakdown Plan
 
 **Root `Reference/` directory pruned to Claude + Airtable resources only:**
@@ -557,4 +586,4 @@ python3 rag-ingest-waratah.py
 
 ---
 
-*Last Updated: 2026-03-03*
+*Last Updated: 2026-03-16*

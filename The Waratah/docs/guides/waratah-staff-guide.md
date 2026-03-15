@@ -1,6 +1,6 @@
 # The Waratah — PREP System Staff Guide
 
-**Last Updated:** 2026-03-07
+**Last Updated:** 2026-03-16
 
 This guide explains how the PREP system works at The Waratah and how to use each part of it. It is written for bar staff — no technical knowledge required.
 
@@ -80,18 +80,16 @@ This is for **sub-recipes, garnishes, and other prep items** — things that nee
 
 For each item you will see:
 - **Item name** (large heading) with the target quantity in bold
-- **Par Level** — how much we should have
-- **Stock Counted** — how much we actually have
-- **Required Parent Batch QTY** — if this item is a component of a bigger batch, this shows how much of the parent batch needs it
 - **Scale this recipe** link — opens the Recipe Scaler (see Section 5)
 - **Ingredients** — bullet list of what you need
 - **Method** — how to make it
+- **Additional Tasks** — a blank section at the end of the document where you can write in any extra tasks for the week
 
 ### Batching Run Sheet
 
 This is for **full batch recipes** — the main production items.
 
-Same layout as above: item name with quantity, par/stock info, ingredients, method, and a link to the Recipe Scaler.
+Same layout as above: item name with quantity, ingredients, method, a link to the Recipe Scaler, and an Additional Tasks section at the end.
 
 ### Andie Ordering Run Sheet / Blade Ordering Run Sheet
 
