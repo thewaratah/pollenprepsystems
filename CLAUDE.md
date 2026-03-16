@@ -149,7 +149,8 @@ PREP Systems/
 - Verify `.claspignore` first: `clasp status` should NOT show `Waratah_*.gs`
 
 ### For Both Venues:
-- Weekly cycle: ClearWeeklyCount (Sat AM) → FinaliseCount (Mon AM) → GeneratePrepRun (Mon PM) → Export Docs → Slack
+- Weekly cycle (automation): ClearWeeklyCount (Sat AM) → FinaliseCount (Mon AM) → GeneratePrepRun (Mon AM) → Export Docs → Slack
+- Waratah workflow: Stocktake Sunday → Mon AM automation → Ordering before 2pm Mon → Deliveries Tue → Prep Tue–Wed
 - Knowledge Platform URL: `https://the-waratah-prep-system.vercel.app/?venue=waratah`
 
 ---

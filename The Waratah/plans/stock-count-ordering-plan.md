@@ -1,10 +1,10 @@
 # Stock Count + Ordering System — The Waratah
 
 **Status:** PLAN ONLY — Not yet implemented
-**Date:** 2026-03-07 (revised after multi-agent review)
-**Owner:** Andie (primary counter/orderer for alcoholic stock)
+**Date:** 2026-03-16 (revised — single-operator model)
+**Owner:** Evan (Bar Manager — sole counter/orderer)
 **Scope:** Spirits, wines, beers across 5 storage locations
-**Cadence:** Tuesdays (independent of Monday prep cycle)
+**Cadence:** Mondays before 1pm (aligned with prep cycle)
 
 ---
 
@@ -13,12 +13,13 @@
 The PREP system calculates ingredient quantities needed for batches and sub-recipes (prep usage). But spirits, wines, and beers are also consumed through general bar service — poured neat, in rounds, etc. Staff cannot easily combine "prep used X bottles of tequila" with "service used Y bottles" to get a total ordering quantity.
 
 **Current state:**
-- Monday: Blade counts prep items -> FinaliseCount -> GeneratePrepRun -> Ingredient Requirements + ordering docs
-- Tuesday: Andie manually counts alcoholic stock across 5 locations, mentally combines with prep data, orders by hand
+- Sunday: Staff count prep items -> Monday AM: FinaliseCount -> GeneratePrepRun -> Ingredient Requirements + ordering docs
+- Monday: Evan manually counts alcoholic stock across 5 locations, mentally combines with prep data, orders by hand
 
 **Desired state:**
-- Monday: Prep cycle runs independently (no changes)
-- Tuesday: Andie opens a structured counting interface, counts stock by location, sees prep-calculated usage alongside her counts, and gets a combined ordering quantity per item
+- Sunday: Prep count cycle runs independently (no changes)
+- Monday AM: Prep automation fires (FinaliseCount -> GeneratePrepRun -> export docs)
+- Monday before 1pm: Evan opens a structured counting interface, counts stock by location, sees prep-calculated usage alongside counts, and gets a combined ordering quantity per item — all ordering docs sent to Evan
 
 ---
 
@@ -35,7 +36,7 @@ The PREP system calculates ingredient quantities needed for batches and sub-reci
       +--------v----------+       +----------v-----------+
       |  Weekly Counts     |       |   Stock Counts        |
       |  (Bar Stock=false) |       |   (Bar Stock=true)    |
-      |  Blade, Mon        |       |   Per-location, Tue   |
+      |  Staff, Sun        |       |   Per-location, Mon   |
       +--------+-----------+       +----------+-----------+
                |                              |
       +--------v----------+       +-----------v-----------+
@@ -52,15 +53,18 @@ The PREP system calculates ingredient quantities needed for batches and sub-reci
                |     +-------------------------+|
                |     |                          |
       +--------v-----v---+          +-----------v----------+
-      | Blade's Order Doc |          | Andie's Bar Stock    |
-      | (prep only)       |          | Order Doc (combined) |
-      +-------------------+          +----------------------+
+      | Ordering Run Sheet |          | Bar Stock Ordering   |
+      | (prep only)        |          | Run Sheet (combined) |
+      +--------------------+          +----------------------+
+               |                                |
+               +---------- Both to Evan --------+
 ```
 
 **Key principles:**
 - Two paths share `Items` and `Par Levels` tables but are otherwise independent
 - No changes to existing prep scripts (except one defensive skip-list addition to `buildOrdering_`)
 - Dual-use items (e.g., tequila used in both prep and bar service) route through the bar stock path for ordering — excluded from prep ordering docs to prevent double-ordering
+- **Single operator:** Evan counts, reviews, and orders everything — no staff split
 
 ---
 
@@ -79,19 +83,19 @@ The PREP system calculates ingredient quantities needed for batches and sub-reci
 | Premium Whisky (no recipes) | Spirit | **true** | Bar stock count only |
 | Margarita batch | Batch | false | Prep tasks only |
 
-### 3.2 Par Levels = "Service-Only" (prevents double-counting)
+### 3.2 Bar Stock Pars = Service-Only (prevents double-counting)
 
 **Problem discovered:** The formula `Combined = MAX(0, Par - OnHand) + Prep Usage` double-counts if par levels are set to cover total consumption (service + prep). E.g., par = 8 (covers 5 service + 3 prep), on hand = 3, prep = 2 -> system says order 7, but correct answer is 5.
 
-**Solution:** Bar stock par levels represent **service-only** targets — how much Andie needs on the shelf for bar service between order cycles, excluding prep. Prep usage is then correctly additive on top.
+**Solution:** Bar stock par levels represent **service-only** targets — how much is needed on the shelf for bar service between order cycles, excluding prep. Prep usage is then correctly additive on top.
 
-Par Levels table gets a new `Par Type` field ("Prep" / "Bar Stock") so each system reads its own pars.
+No `Par Type` field needed — the prep system never uses per-ingredient pars. Prep demand for items like Espolon is already calculated by `GeneratePrepRun` from batch/recipe par levels and flows through as Ingredient Requirements. Bar stock pars are inherently service-only.
 
 ### 3.3 Bar Stock Items Excluded from Prep Ordering Docs
 
-**Problem discovered:** A dual-use item appears in both Monday's Ingredient Requirements (-> Andie's prep ordering doc) AND Tuesday's Stock Orders. Without coordination, Andie orders the prep usage twice.
+**Problem discovered:** A dual-use item appears in both Monday's Ingredient Requirements (-> prep ordering doc) AND Monday's Stock Orders. Without coordination, the prep usage gets ordered twice.
 
-**Solution:** Add bar stock Item Types to the skip list in `GoogleDocsPrepSystem.gs`'s `buildOrdering_` function. Items with `Bar Stock = true` are excluded from prep ordering docs. Their prep usage is folded into the Tuesday stock order instead.
+**Solution:** Add bar stock Item Types to the skip list in `GoogleDocsPrepSystem.gs`'s `buildOrdering_` function. Items with `Bar Stock = true` are excluded from prep ordering docs. Their prep usage is folded into the bar stock order instead.
 
 ---
 
@@ -99,9 +103,9 @@ Par Levels table gets a new `Par Type` field ("Prep" / "Bar Stock") so each syst
 
 | Question | Answer |
 |----------|--------|
-| What unit does Andie count in? | **Units** (whole + decimal). ML size is already applied to each item (bottles 200-1000ml, kegs 50000ml). No unit conversion needed. |
-| Do all items exist at all 5 locations? | **Apply all locations to all stock.** Full cartesian product (item x location). Andie enters 0 where item isn't present. |
-| Par levels already exist? | **Yes** — Andie already has par levels. Data entry into Airtable required in Phase 1. |
+| What unit does Evan count in? | **Units** (whole + decimal). ML size is already applied to each item (bottles 200-1000ml, kegs 50000ml). No unit conversion needed. |
+| Do all items exist at all 5 locations? | **Apply all locations to all stock.** Full cartesian product (item x location). Enter 0 where item isn't present. |
+| Par levels already exist? | **Yes** — Evan already has par levels. Data entry into Airtable required in Phase 1. |
 | Supplier data in Airtable? | **Yes** — suppliers already exist in the Supplier table. Bar stock items just need linking. |
 | Mixers included? | Deferred to Phase 4. |
 | Case-size rounding? | Deferred to Phase 4. |
@@ -116,8 +120,7 @@ Par Levels table gets a new `Par Type` field ("Prep" / "Bar Stock") so each syst
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `Bar Stock` | **Checkbox** | true = counted by Andie on Tuesdays. Core routing field. |
-| `Shelf Position` | Number | Physical ordering within location for counting UX |
+| `Bar Stock` | **Checkbox** | true = counted on Mondays as bar stock. Core routing field. |
 
 #### `Items` — New Item Type values (for pure bar stock items only)
 
@@ -133,13 +136,9 @@ Par Levels table gets a new `Par Type` field ("Prep" / "Bar Stock") so each syst
 
 **Zero risk to existing scripts** — `Waratah_GeneratePrepRun.gs` and `Waratah_ClearWeeklyCount.gs` filter by their own `allowedTopLevelItemTypes` sets. New types are invisible. The `"Ingredient"` check on recipe line components (line ~1070) is also unaffected because dual-use items remain typed as `"Ingredient"`.
 
-#### `Par Levels` — One new field
+#### `Par Levels` — No schema change needed
 
-| Field | Type | Notes |
-|-------|------|-------|
-| `Par Type` | Single select | "Prep" / "Bar Stock" — distinguishes which system uses this par |
-
-Existing prep par records get `Par Type = "Prep"`. New bar stock pars get `Par Type = "Bar Stock"`.
+Bar stock items get par level records in the existing Par Levels table. These pars represent service-only targets. The prep system calculates its own ingredient demand from batch/recipe pars via `GeneratePrepRun` — it never reads per-ingredient par levels for items like Espolon.
 
 ### 5.2 New Tables
 
@@ -152,14 +151,14 @@ Existing prep par records get `Par Type = "Prep"`. New bar stock pars get `Par T
 | `Active` | Checkbox | Allows deactivation without deleting history |
 | `Notes` | Long text | Optional location description |
 
-#### `Count Sessions` (one per Tuesday counting event)
+#### `Count Sessions` (one per Monday counting event)
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `Session Date` | Date | The Tuesday date |
+| `Session Date` | Date | The Monday date |
 | `Session Name` | Formula | `"Stock Count - " & DATETIME_FORMAT({Session Date}, 'DD/MM/YYYY')` |
-| `Status` | Single select | "Not Started", "In Progress", "Completed", "Verified" |
-| `Counted By` | Single select | "Andie" |
+| `Status` | Single select | "Not Started", "In Progress", "Completed", "Needs Review", "Validated", "Orders Generated" |
+| `Counted By` | Single select | "Evan" |
 | `Stock Counts` | Linked (reverse) | Auto-populated |
 | `Stock Orders` | Linked (reverse) | Auto-populated after order generation |
 | `Notes` | Long text | Session-level notes |
@@ -192,13 +191,12 @@ Existing prep par records get `Par Type = "Prep"`. New bar stock pars get `Par T
 | `Combined Order Qty` | Number | `Service Shortfall + Prep Usage` |
 | `Supplier Name (Static)` | Text | Snapshot from Items |
 | `Product Category (Static)` | Text | Snapshot from Items |
-| `Ordering Staff (Static)` | Text | Always "Andie" for bar stock |
 | `Status` | Single select | "Pending", "Ordered", "Received" |
 | `Notes` | Long text | |
 
 ### 5.3 What Does NOT Change
 
-- `Weekly Counts` — continues to be prep-only (Blade, Mondays)
+- `Weekly Counts` — continues to be prep-only (staff count on Sunday)
 - `Prep Runs` / `Prep Tasks` / `Ingredient Requirements` — untouched
 - `Recipes` / `Recipe Lines` — untouched
 - `Supplier` — no schema change (bar stock items already have suppliers)
@@ -209,7 +207,7 @@ Existing prep par records get `Par Type = "Prep"`. New bar stock pars get `Par T
 
 ### 6.1 `Waratah_InitStockCount.gs`
 
-**Trigger:** Manual (Andie clicks a button) or scheduled (Tuesday 8am)
+**Trigger:** Manual (Evan clicks a button) or scheduled (Monday 8am)
 **Purpose:** Create a new Count Session + placeholder Stock Count records + archive old sessions
 
 **Logic:**
@@ -235,7 +233,7 @@ Existing prep par records get `Par Type = "Prep"`. New bar stock pars get `Par T
 3. Flag outliers: any count > 200% of par level gets `Needs Review = true`
 4. Validate session date is today (prevent accidental re-run of old sessions)
 5. If valid: trigger `GenerateStockOrders`
-6. If invalid: log errors, keep session as "Completed" (not "Verified"), alert Andie
+6. If invalid: log errors, keep session as "Completed" (not "Verified"), alert Evan
 
 ### 6.3 `Waratah_GenerateStockOrders.gs`
 
@@ -246,7 +244,7 @@ Existing prep par records get `Par Type = "Prep"`. New bar stock pars get `Par T
 1. Find latest Count Session with Status = "Completed" (validated)
 2. Fetch all Stock Counts for that session
 3. Aggregate: `totalOnHand[itemId] = SUM(quantities across all locations)`
-4. Fetch Par Levels where `Par Type = "Bar Stock"`
+4. Fetch Par Levels for bar stock items
 5. Fetch latest Ingredient Requirements from **current week's** Prep Run:
    - Find most recent Prep Run where `Prep Week` is within the last 7 days
    - Fetch its Ingredient Requirements
@@ -262,17 +260,34 @@ Existing prep par records get `Par Type = "Prep"`. New bar stock pars get `Par T
 
 ---
 
-## 7. GAS Export Pipeline
+## 7. GAS Export Pipeline — Combined Ordering Doc
 
-### 7.1 New Google Doc: "Bar Stock Ordering Run Sheet — W.E. DD/MM/YYYY"
+### 7.1 Key Insight: One Ordering Doc, Not Two
 
-Add a self-contained export function to `GoogleDocsPrepSystem.gs` (or parallel file). Uses the same template engine pattern as existing docs.
+The prep stock count (Sunday) generates Ingredient Requirements on Monday AM, while the bar stock count (Monday) generates Stock Orders. Both feed into the same ordering decision. Producing two separate ordering docs (one for prep, one for bar stock) forces Evan to manually reconcile them at the same supplier. Instead:
+
+- **Monday AM (auto):** GoogleDocsPrepSystem exports **Batching List + Ingredient Prep List only** — ordering docs are **suppressed**
+- **Monday (after bar stock count):** `GenerateStockOrders` creates Stock Orders with `Prep Usage` already folded in from Ingredient Requirements
+- **Manual trigger:** Evan triggers the combined ordering doc export after reviewing Stock Orders in Airtable
+
+This replaces both the old Andie/Blade ordering docs and the originally-planned separate bar stock ordering doc with **one combined ordering doc** per week.
+
+### 7.2 Suppress Existing Ordering Doc Export
+
+Modify `GoogleDocsPrepSystem.gs`:
+- `createOrReplaceOrderingDocs_` (or equivalent) — **skip entirely** when Monday AM export runs
+- Batching List + Ingredient Prep List still export and send to Slack as normal
+- Ordering-related Slack notifications (Andie/Blade channels) are removed
+
+### 7.3 New Combined Ordering Doc: "Ordering Run Sheet — W.E. DD/MM/YYYY"
+
+New export function in `GoogleDocsPrepSystem.gs` (or parallel file). Reads from Stock Orders table (which already contains Total On Hand, Par Qty, Service Shortfall, Prep Usage, Combined Order Qty, Supplier).
 
 **Document structure:**
 ```
-BAR STOCK ORDERING RUN SHEET — W.E. 16/03/2026
-Counted by: Andie
-Session: Stock Count - 11/03/2026
+ORDERING RUN SHEET — W.E. 22/03/2026
+Counted by: Evan
+Session: Stock Count - 16/03/2026
 
 [Grouped by Supplier]
 
@@ -284,68 +299,92 @@ Session: Stock Count - 11/03/2026
 --- PARAMOUNT LIQUOR ---
   ...
 
-[ITEMS BELOW PAR -- NO SUPPLIER]
+--- PREP-ONLY ITEMS (no bar stock count) ---
+  Cornflour 1kg        | Prep: 2      | Order: 2
+  ...
+
+[ITEMS BELOW PAR — NO SUPPLIER]
   ...
 ```
 
-**Trigger mechanism:** New polling function (same pattern as `Waratah_GeneratePrepSheet_TimeBasedPolling.gs`) checks Count Sessions for `Status = "Verified"` + `Export Requested = true`. Or: triggered directly by `GenerateStockOrders` via GAS web app endpoint.
+**"Prep-Only Items" section:** Items with `Bar Stock = false` that appear in Ingredient Requirements but NOT in Stock Orders. These are non-bar-stock ingredients that still need ordering (e.g., cornflour, cream). Fetched from Ingredient Requirements and appended after the supplier-grouped bar stock section.
+
+**Trigger mechanism:** Manual trigger — Evan clicks a button in Airtable Interface or hits the GAS web app endpoint. Same authentication pattern as existing manual triggers (`MANUAL_TRIGGER_SECRET`).
 
 **Template:** Create a new Google Docs template with Waratah branding (logo + watermark), matching existing prep doc templates.
 
-### 7.2 Slack Notification
+### 7.4 Slack Notification
 
-Use existing Slack webhook pattern (`SLACK_WEBHOOK_WARATAH_ANDIE`) to send a link to the generated doc. Same Block Kit structure as current prep ordering notifications.
+Single notification to `SLACK_WEBHOOK_EV_TEST` (Evan's channel) with link to the combined ordering doc. Replaces both old Andie/Blade ordering notifications.
 
-### 7.3 Modify `buildOrdering_` in GoogleDocsPrepSystem.gs
+### 7.5 What Happens to `buildOrdering_`?
 
-Add `Bar Stock = true` items to the skip list so they no longer appear in Andie's prep ordering doc. This prevents double-ordering for dual-use items.
+`buildOrdering_` in `GoogleDocsPrepSystem.gs` currently generates per-staff ordering docs from Ingredient Requirements. With combined ordering:
+- **Option A (clean):** Remove Andie/Blade ordering doc generation entirely. The combined doc handles all ordering.
+- **Option B (transitional):** Keep `buildOrdering_` but add `Bar Stock = true` items to the skip list. This produces a prep-only ordering doc alongside the combined doc. Useful during transition but creates confusion long-term.
+
+**Recommended: Option A** — the combined doc includes a "Prep-Only Items" section for non-bar-stock ingredients, making the old ordering docs fully redundant.
 
 ---
 
-## 8. Andie's Workflow (Tuesday)
+## 8. Evan's Monday Workflow
 
 ### Step-by-step:
 
-1. **8:00am** -- `Waratah_InitStockCount` runs automatically
+1. **Monday AM (automatic)** -- Prep automation fires
+   - FinaliseCount -> GeneratePrepRun -> Export Docs -> Slack notifications
+   - **Batching List + Ingredient Prep List only** — ordering docs are NOT generated yet
+   - Evan receives prep doc links in Slack (staff can start prep work)
+
+2. **Monday AM** -- `Waratah_InitStockCount` runs (automatic or manual trigger)
    - Archives old sessions (>4 weeks)
    - Creates session + placeholder records for all bar stock items x all locations
    - Populates `Previous Count` from last session
 
-2. **8:00am-11:00am** -- Andie walks each location and enters counts
-   - Opens Airtable view "Count by Location" (grouped by location, sorted by Shelf Position)
+3. **Monday AM -- before 1pm** -- Evan walks each location and enters counts
+   - Opens Airtable view "Count by Location" (grouped by location, sorted by item name)
    - Walks to Public Bar -> fills in quantities -> moves to Terrace Bar -> etc.
    - Counts in **tenths** for partial bottles (2.3 = 2 full + ~1/3 open)
    - Uses "Missing Counts" view to check nothing was skipped
    - Items not present at a location: enters 0 (null = "not checked" and blocks completion)
 
-3. **~11:00am** -- Andie marks the Count Session as "Completed"
+4. **Before 1pm** -- Evan marks the Count Session as "Completed"
    - Reviews "Session Review" view for sanity check
 
-4. **~11:00am** -- `Waratah_ValidateStockCount` runs automatically
+5. **Automatic** -- `Waratah_ValidateStockCount` runs
    - Checks no nulls remain, flags outliers
    - If valid: triggers order generation
 
-5. **~11:01am** -- `Waratah_GenerateStockOrders` runs
+6. **Automatic** -- `Waratah_GenerateStockOrders` runs
+   - Pulls Ingredient Requirements from Monday AM's Prep Run
    - Calculates combined ordering quantities (service shortfall + prep usage)
    - Creates Stock Order records
-   - Marks session "Verified"
+   - Marks session "Orders Generated"
 
-6. **~11:05am** -- GAS export generates ordering doc + Slack notification
-   - Andie receives the doc link in Slack
-   - Doc shows: on-hand totals, par levels, prep usage (from Monday), and final order quantity per item grouped by supplier
+7. **Evan reviews** -- Opens "Current Orders" view in Airtable
+   - Sanity-checks the numbers (on hand, par, prep usage, combined order)
+   - Adjusts any quantities if needed
+   - Triggers the ordering doc export (button or manual GAS trigger)
 
-7. **11:05am onwards** -- Andie places orders with suppliers using the doc
+8. **Manual trigger** -- GAS export generates combined ordering doc + Slack notification
+   - Single "Ordering Run Sheet" doc grouped by supplier
+   - Includes both bar stock items AND prep-only items (cornflour, cream, etc.)
+   - Evan receives the doc link in Slack
 
-### Airtable Views for Andie:
+9. **After doc arrives** -- Evan places orders using the single doc
+   - One doc covers everything — no cross-referencing needed
+   - Places all orders before 2pm
 
-| View Name | Table | Purpose |
-|-----------|-------|---------|
-| "Count by Location" | Stock Counts | Primary counting -- grouped by Storage Location, sorted by Shelf Position |
-| "Missing Counts" | Stock Counts | Filter: current session AND Quantity is empty |
-| "Session Review" | Stock Counts | Flat list, sorted A-Z, for final review before marking Complete |
-| "Current Orders" | Stock Orders | Ordering list grouped by supplier, filter: latest session |
-| "Order History" | Stock Orders | All past sessions for trend analysis |
-| "Bar Stock Items" | Items | Filter: Bar Stock = true AND Status = Active |
+### Airtable Views for Evan:
+
+| View Name | Table | Filter | Layout |
+|-----------|-------|--------|--------|
+| "Count by Location" | Stock Counts | Session Status (Lookup) = "In Progress" | Grouped by Location, sorted by Item Name A-Z |
+| "Missing Counts" | Stock Counts | Session Status (Lookup) = "In Progress" AND Quantity is empty | Flat list, sorted by Item Name A-Z |
+| "Session Review" | Stock Counts | Session Status (Lookup) = "In Progress" OR "Completed" | Flat list, sorted by Item Name A-Z |
+| "Current Orders" | Stock Orders | Session Status (Lookup) = "Orders Generated" | Grouped by Supplier Name (Static) |
+| "Order History" | Stock Orders | (none) | Sorted by Count Session descending |
+| "Bar Stock Items" | Items | Bar Stock = checked AND Status = "Active" | Sorted by Item Name A-Z |
 
 ---
 
@@ -355,12 +394,12 @@ The key innovation: **Stock Orders includes a `Prep Usage` column** that pulls f
 
 ### How it works:
 
-1. Monday PM: `GeneratePrepRun` creates Ingredient Requirements (existing flow, unchanged)
-2. Tuesday: `GenerateStockOrders` finds the current week's Prep Run, fetches its Ingredient Requirements
+1. Monday AM: `GeneratePrepRun` creates Ingredient Requirements (existing flow, unchanged)
+2. Monday (before 1pm): `GenerateStockOrders` finds the current week's Prep Run, fetches its Ingredient Requirements
 3. For each bar stock item that also appears as a recipe component:
    - `Prep Usage` = SUM of `Total Qty Needed` across all Ingredient Requirements for this item
    - `Combined Order Qty` = service shortfall + prep usage
-4. Items with `Bar Stock = true` are **excluded** from Andie's prep ordering doc (via `buildOrdering_` skip list)
+4. The combined ordering doc includes both bar stock orders AND prep-only items (non-bar-stock ingredients from Ingredient Requirements) — one doc covers all ordering
 
 ### Example (par levels are service-only):
 
@@ -372,7 +411,7 @@ The key innovation: **Stock Orders includes a `Prep Usage` column** that pulls f
 
 ### Edge cases:
 
-- **No Monday Prep Run:** `prepUsage = 0` for all items. Warning logged. Andie sees service shortfall only.
+- **No Monday Prep Run:** `prepUsage = 0` for all items. Warning logged. Evan sees service shortfall only.
 - **Item in prep but NOT bar stock:** Stays in prep ordering doc (Ingredient type, Bar Stock = false). Not affected.
 - **Item in bar stock but NOT prep:** `prepUsage = 0`. Order = service shortfall only.
 - **Prep Run rebuilt mid-week:** Script always reads from the latest Prep Run by date. Safe.
@@ -384,19 +423,16 @@ The key innovation: **Stock Orders includes a `Prep Usage` column** that pulls f
 ### Phase 1: Foundation (Week 1) -- DATA ENTRY
 
 - [ ] Add `Bar Stock` checkbox field to Items table
-- [ ] Add `Shelf Position` number field to Items table
-- [ ] Add `Par Type` single select to Par Levels table ("Prep" / "Bar Stock")
 - [ ] Add new Item Type values: Spirit, Wine, Beer (Mixer, RTD deferred)
 - [ ] Mark existing dual-use items with `Bar Stock = true` (keep Item Type = "Ingredient")
 - [ ] Add pure bar stock items with Item Type = Spirit/Wine/Beer and `Bar Stock = true`
 - [ ] Link all bar stock items to their Suppliers (already in Airtable)
-- [ ] Enter Andie's par levels with `Par Type = "Bar Stock"` (she already has these)
-- [ ] Tag existing prep par levels with `Par Type = "Prep"`
+- [ ] Enter bar stock par levels (service-only targets) for all bar stock items
 - [ ] Create `Storage Locations` table (5 records: Public Bar, Terrace Bar, Banquettes, B1, Backbars)
 - [ ] Create `Count Sessions` table
 - [ ] Create `Stock Counts` table (with Previous Count + Needs Review fields)
 - [ ] Create `Stock Orders` table
-- [ ] Build 6 Airtable views for Andie
+- [ ] Build 6 Airtable views for Evan
 
 ### Phase 2: Automation Scripts (Week 2)
 
@@ -407,14 +443,16 @@ The key innovation: **Stock Orders includes a `Prep Usage` column** that pulls f
 - [ ] Follow existing CONFIG/INPUT/safeField_/batchCreate_/writeAuditLog_ patterns
 - [ ] Test on copy of Airtable base with sample data
 
-### Phase 3: Export Pipeline (Week 3)
+### Phase 3: Combined Ordering Doc Export (Week 3)
 
-- [ ] Create Google Docs template for bar stock ordering (Waratah branding)
-- [ ] Add bar stock doc export function to GAS (self-contained in GoogleDocsPrepSystem.gs)
-- [ ] Add polling trigger mechanism for bar stock export
-- [ ] Add Slack notification (SLACK_WEBHOOK_WARATAH_ANDIE)
-- [ ] **Modify `buildOrdering_`** -- skip items with `Bar Stock = true` from prep ordering docs
-- [ ] End-to-end test: init -> count -> validate -> generate -> export -> Slack
+- [ ] Create Google Docs template for combined ordering (Waratah branding)
+- [ ] Add combined ordering doc export function to GAS — reads Stock Orders + Ingredient Requirements
+- [ ] Include "Prep-Only Items" section for non-bar-stock ingredients from Ingredient Requirements
+- [ ] Add manual trigger mechanism (button in Airtable Interface or GAS web app endpoint)
+- [ ] Add Slack notification to Evan's webhook (`SLACK_WEBHOOK_EV_TEST`)
+- [ ] **Suppress existing ordering doc export** from Monday AM prep cycle (keep Batching + Ingredient Prep only)
+- [ ] Remove Andie/Blade ordering doc generation and Slack notifications
+- [ ] End-to-end test: init -> count -> validate -> generate orders -> trigger export -> Slack
 
 ### Phase 4: Optimisation (Week 4+)
 
@@ -422,7 +460,6 @@ The key innovation: **Stock Orders includes a `Prep Usage` column** that pulls f
 - [ ] Case-size rounding (`Case Size` field on Items, `CEILING(orderQty, caseSize)`)
 - [ ] Usage trend tracking (week-over-week deltas from Previous Count)
 - [ ] Include Mixers (add to Bar Stock items)
-- [ ] Combined "Master Order" doc merging prep + bar stock into one supplier-grouped document
 - [ ] Mobile-optimised counting web app at `/count` on Knowledge Platform (offline-first)
 - [ ] Automated par level review alerts (flag items where usage deviates >30% from par)
 
@@ -432,10 +469,10 @@ The key innovation: **Stock Orders includes a `Prep Usage` column** that pulls f
 
 | Risk | Severity | Mitigation |
 |------|----------|------------|
-| Dual-use items double-ordered | **P0** | `Bar Stock` checkbox + exclude from prep ordering docs via `buildOrdering_` |
-| Par level semantics misunderstood | **P1** | Document "service-only" definition; `Par Type` field distinguishes prep vs bar stock |
+| Dual-use items double-ordered | **P0** | Combined ordering doc replaces both prep and bar stock ordering docs — one source of truth per item |
+| Par level semantics misunderstood | **P1** | Document "service-only" definition; prep demand flows from batch/recipe pars via Ingredient Requirements, not per-ingredient pars |
 | Item Type change breaks prep | **P0** | Avoided entirely -- dual-use items keep `Item Type = "Ingredient"` |
-| Prep Run missing on Tuesday | **P1** | Date guard (7-day window) + graceful fallback (prepUsage = 0, warning logged) |
+| Prep Run missing on Monday | **P1** | Date guard (7-day window) + graceful fallback (prepUsage = 0, warning logged) |
 | Ingredient Req. not aggregated properly | **P1** | SUM across all recipes per item, not single lookup |
 | 500 records/session = Airtable bloat | **P2** | Archival built into InitStockCount (4-week retention, ~2000 records max) |
 | Airtable 30s script timeout | **P2** | Monitor; split into two automations if needed |
@@ -452,8 +489,9 @@ The key innovation: **Stock Orders includes a `Prep Usage` column** that pulls f
 - `Waratah_GenerateStockOrders.gs` -- aggregation + ordering calculation
 
 ### Modified Files
-- `GoogleDocsPrepSystem.gs` -- add bar stock ordering doc generation + Slack notification + modify `buildOrdering_` to skip Bar Stock items
+- `GoogleDocsPrepSystem.gs` -- add combined ordering doc export function + suppress Monday AM ordering doc generation + remove Andie/Blade ordering + Slack to Evan only
 - `.claspignore` -- add 3 new Waratah_*.gs scripts to exclusion list
+- `sync-airtable-scripts-to-drive.sh` -- add 3 new scripts to AIRTABLE_SCRIPTS array
 
 ### No Changes to Existing Automation Scripts
 - `Waratah_ClearWeeklyCount.gs` -- untouched
@@ -462,3 +500,8 @@ The key innovation: **Stock Orders includes a `Prep Usage` column** that pulls f
 - `Waratah_GeneratePrepSheet_TimeBasedPolling.gs` -- untouched
 - `RecipeScaler.gs` -- untouched
 - `FeedbackForm.gs` -- untouched
+
+### Slack Webhook Changes
+- Combined ordering doc notification routes to `SLACK_WEBHOOK_EV_TEST` (Evan's channel)
+- Andie/Blade ordering notifications **removed** — no longer needed
+- Prep channel (`SLACK_WEBHOOK_WARATAH_PREP`) still sends Batching + Ingredient Prep links Monday AM

@@ -8,6 +8,7 @@ Waratah_GeneratePrepSheet_TimeBasedPolling.gs
 Waratah_InitStockCount.gs
 Waratah_ValidateStockCount.gs
 Waratah_GenerateStockOrders.gs
+Waratah_ExportOrderingDoc.gs
 
 # Debug utilities (manual testing only — not for production)
 Debug.gs

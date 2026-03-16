@@ -13,7 +13,7 @@
  *   Combined Order  = Service Shortfall + Prep Usage
  *
  * Trigger: Runs after Validate Stock Count sets status to "Validated"
- * Inputs:  sessionId (string), dryRun (boolean)
+ * Inputs:  sessionId (string, auto-detects latest "Validated" session if omitted), dryRun (boolean, defaults false)
  */
 
 // ── INPUT ──────────────────────────────────────────────────────────
@@ -74,7 +74,7 @@ const CONFIG = {
   orderSessionField: "Count Session",
   orderOnHandField: "Total On Hand",
   orderPrepUsageField: "Prep Usage",
-  orderParQtyField: "Prep Qty",       // Airtable field stores the bar stock par level for this item
+  orderParQtyField: "Prep Qty",        // Airtable field stores the bar stock par level for this item
   orderServiceShortfallField: "Service Shortfall",
   orderCombinedField: "Combined Order Qty",
   orderSupplierStaticField: "Supplier Name (Static)",
@@ -244,7 +244,7 @@ const main = async () => {
   } else {
     const candidates = sessionsQuery.records.filter(r => {
       const status = r.getCellValue(CONFIG.sessionStatusField);
-      return status?.name === "Validated";
+      return status?.name === "Validated" || status?.name === "Orders Generated";
     });
 
     if (candidates.length === 0) {
@@ -260,10 +260,10 @@ const main = async () => {
     targetSession = candidates[0];
   }
 
-  // Guard: reject sessions that already have orders generated
+  // Allow re-run on "Orders Generated" sessions — Phase 8 will clean up old orders first
   const targetStatus = targetSession.getCellValue(CONFIG.sessionStatusField);
   if (targetStatus?.name === "Orders Generated") {
-    throw new Error(`Session ${targetSession.id} already has orders generated. Delete existing orders first or use a different session.`);
+    console.log("  Session already has orders — will be regenerated (old orders deleted in Phase 8)");
   }
 
   const sessionDate = targetSession.getCellValue(CONFIG.sessionDateField);
@@ -507,8 +507,29 @@ const main = async () => {
   console.log(`  Total combined order qty: ${totalCombinedQty}`);
   console.log("");
 
-  // ── Phase 8: Create Stock Order records ──
-  console.log("Phase 8: Creating Stock Order records...");
+  // ── Phase 8: Delete existing Stock Orders for this session (idempotent re-run) ──
+  console.log("Phase 8: Cleaning up existing orders for this session...");
+
+  if (!dryRun) {
+    const existingOrderRefs = targetSession.getCellValue(CONFIG.sessionStockOrdersField);
+    if (existingOrderRefs && existingOrderRefs.length > 0) {
+      const existingIds = existingOrderRefs.map(r => r.id);
+      console.log(`  Found ${existingIds.length} existing Stock Order records — deleting...`);
+      for (let i = 0; i < existingIds.length; i += CONFIG.batchSize) {
+        const chunk = existingIds.slice(i, i + CONFIG.batchSize);
+        await ordersTable.deleteRecordsAsync(chunk);
+      }
+      console.log(`  Deleted ${existingIds.length} old records`);
+    } else {
+      console.log("  No existing orders to clean up");
+    }
+  } else {
+    console.log("  [DRY RUN] Would delete existing orders for this session");
+  }
+  console.log("");
+
+  // ── Phase 9: Create Stock Order records ──
+  console.log("Phase 9: Creating Stock Order records...");
 
   if (!dryRun && orderRecords.length > 0) {
     const createdIds = await batchCreate_(ordersTable, orderRecords);
@@ -520,8 +541,8 @@ const main = async () => {
   }
   console.log("");
 
-  // ── Phase 9: Update session status ──
-  console.log("Phase 9: Updating session status...");
+  // ── Phase 10: Update session status ──
+  console.log("Phase 10: Updating session status...");
 
   if (!dryRun) {
     const sessionUpdateFields = {};
@@ -537,7 +558,7 @@ const main = async () => {
   }
   console.log("");
 
-  // ── Phase 10: Summary ──
+  // ── Phase 11: Summary ──
   const endTime = Date.now();
   const executionTime = ((endTime - startTime) / 1000).toFixed(2);
 
@@ -555,7 +576,7 @@ const main = async () => {
   console.log(`Execution Time: ${executionTime}s`);
   console.log("");
 
-  // ── Phase 11: Audit Log ──
+  // ── Phase 12: Audit Log ──
   if (!dryRun && auditLogTable) {
     await writeAuditLog_(auditLogTable, {
       scriptName: CONFIG.scriptName,

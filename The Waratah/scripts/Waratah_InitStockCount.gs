@@ -3,11 +3,11 @@
  *
  * Airtable Automation Script — runs INSIDE Airtable (not GAS).
  * Creates a new Count Session and Stock Count placeholder records
- * for every active Bar Stock item x every active Storage Location.
+ * for every active Core Order item, at the Storage Locations linked on each item.
  * Archives sessions older than 4 weeks.
  *
- * Trigger: Manual button or scheduled automation (Tuesday AM)
- * Inputs:  dryRun (boolean), countedBy (string)
+ * Trigger: Manual button or scheduled automation (Monday AM)
+ * Inputs:  dryRun (boolean, defaults false), countedBy (string, defaults "Evan")
  */
 
 // ── INPUT ──────────────────────────────────────────────────────────
@@ -21,7 +21,7 @@ const INPUT = (() => {
 })();
 
 const dryRun = INPUT.dryRun === true;
-const countedByInput = INPUT.countedBy || null; // Must be provided via automation input
+const countedByInput = INPUT.countedBy || "Evan"; // Default when automation can't pass string inputs
 
 // ── CONFIG ─────────────────────────────────────────────────────────
 const CONFIG = {
@@ -39,6 +39,8 @@ const CONFIG = {
   // Items fields
   itemNameField: "Item Name",
   itemBarStockField: "Bar Stock",
+  itemCoreOrderField: "Core Order",
+  itemStorageLocationsField: "Storage Locations",
   itemActiveField: "Active",
   itemTypeField: "Item Type",
 
@@ -76,7 +78,7 @@ const CONFIG = {
   // Behaviour
   batchSize: 50,
   archiveWeeks: 4,
-  allowedStatuses: ["Draft", "In Progress"],
+  allowedStatuses: ["Not Started", "In Progress"],
 };
 
 // ── HELPERS ─────────────────────────────────────────────────────────
@@ -195,10 +197,6 @@ const main = async () => {
   console.log(`Counted By: ${countedByInput || "(not set)"}`);
   console.log("");
 
-  if (!countedByInput) {
-    throw new Error("countedBy input is required. Set it in the automation config (e.g., Andie, Ev, Adam).");
-  }
-
   // ── Phase 1: Load tables ──
   console.log("Phase 1: Loading tables...");
 
@@ -248,22 +246,23 @@ const main = async () => {
   console.log("  No open sessions found");
   console.log("");
 
-  // ── Phase 3: Fetch Bar Stock items ──
-  console.log("Phase 3: Fetching Bar Stock items...");
+  // ── Phase 3: Fetch Core Order items ──
+  console.log("Phase 3: Fetching Core Order items...");
 
   const itemsQuery = await itemsTable.selectRecordsAsync({
-    fields: [CONFIG.itemNameField, CONFIG.itemBarStockField, CONFIG.itemTypeField],
+    fields: [CONFIG.itemNameField, CONFIG.itemCoreOrderField, CONFIG.itemStorageLocationsField, CONFIG.itemBarStockField, CONFIG.itemTypeField, CONFIG.itemActiveField],
   });
 
-  const barStockItems = itemsQuery.records.filter(r => {
-    return r.getCellValue(CONFIG.itemBarStockField) === true;
+  const coreOrderItems = itemsQuery.records.filter(r => {
+    return r.getCellValue(CONFIG.itemCoreOrderField) === true
+      && r.getCellValue(CONFIG.itemActiveField) !== false;
   });
 
-  console.log(`  Found ${barStockItems.length} items with Bar Stock = true`);
+  console.log(`  Found ${coreOrderItems.length} items with Core Order = true`);
   console.log("");
 
-  if (barStockItems.length === 0) {
-    const msg = "No items with Bar Stock = true found. Mark items in the Items table first.";
+  if (coreOrderItems.length === 0) {
+    const msg = "No items with Core Order = true found. Check the Core Order checkbox on items you want to count.";
     console.log(`  BLOCKED: ${msg}`);
     output.set("status", "blocked");
     output.set("message", msg);
@@ -356,7 +355,7 @@ const main = async () => {
   // Status (single select)
   const statusField = safeField_(sessionsTable, CONFIG.sessionStatusField);
   if (statusField && statusField.type === "singleSelect") {
-    sessionFields[CONFIG.sessionStatusField] = { name: "Draft" };
+    sessionFields[CONFIG.sessionStatusField] = { name: "Not Started" };
   }
 
   // Counted By (single select)
@@ -374,22 +373,33 @@ const main = async () => {
   }
   console.log("");
 
-  // ── Phase 7: Create Stock Count placeholders ──
+  // ── Phase 7: Create Stock Count placeholders (item → linked locations) ──
   console.log("Phase 7: Creating Stock Count placeholders...");
 
-  const totalPlaceholders = barStockItems.length * activeLocations.length;
-  console.log(`  ${barStockItems.length} items x ${activeLocations.length} locations = ${totalPlaceholders} records`);
-
+  const activeLocationIds = new Set(activeLocations.map(l => l.id));
   const placeholders = [];
   const prevCountField = safeField_(countsTable, CONFIG.countPreviousField);
+  let skippedNoLocations = 0;
 
-  for (const item of barStockItems) {
+  for (const item of coreOrderItems) {
     const itemId = item.id;
+    const linkedLocations = item.getCellValue(CONFIG.itemStorageLocationsField);
 
-    for (const location of activeLocations) {
+    if (!linkedLocations || linkedLocations.length === 0) {
+      const itemName = item.getCellValue(CONFIG.itemNameField);
+      const displayName = Array.isArray(itemName) ? itemName.map(l => l.name || l.id).join(", ") : itemName || itemId;
+      console.log(`  WARNING: "${displayName}" has no Storage Locations linked — skipping`);
+      skippedNoLocations++;
+      continue;
+    }
+
+    for (const loc of linkedLocations) {
+      // Only create placeholders for active locations
+      if (!activeLocationIds.has(loc.id)) continue;
+
       const fields = {
         [CONFIG.countItemField]: [{ id: itemId }],
-        [CONFIG.countLocationField]: [{ id: location.id }],
+        [CONFIG.countLocationField]: [{ id: loc.id }],
       };
 
       if (sessionRecordId) {
@@ -398,7 +408,7 @@ const main = async () => {
 
       // Pre-fill previous count for this specific item+location
       if (prevCountField) {
-        const key = `${itemId}|${location.id}`;
+        const key = `${itemId}|${loc.id}`;
         const prevQty = previousCountMap.get(key);
         if (prevQty != null) {
           fields[CONFIG.countPreviousField] = prevQty;
@@ -409,9 +419,23 @@ const main = async () => {
     }
   }
 
+  const totalPlaceholders = placeholders.length;
+  console.log(`  ${coreOrderItems.length} items → ${totalPlaceholders} placeholders (${skippedNoLocations} items skipped — no locations linked)`);
+
   if (!dryRun) {
     const createdIds = await batchCreate_(countsTable, placeholders);
     console.log(`  Created ${createdIds.length} Stock Count records`);
+
+    // Update session status to "In Progress" — signals to Evan that counting can begin
+    if (sessionRecordId) {
+      const sField = safeField_(sessionsTable, CONFIG.sessionStatusField);
+      if (sField && sField.type === "singleSelect") {
+        await sessionsTable.updateRecordAsync(sessionRecordId, {
+          [CONFIG.sessionStatusField]: { name: "In Progress" },
+        });
+        console.log('  Session status -> "In Progress"');
+      }
+    }
   } else {
     console.log(`  [DRY RUN] Would create ${placeholders.length} Stock Count records`);
   }
@@ -484,9 +508,10 @@ const main = async () => {
   console.log("========================================");
   console.log(`Session Date: ${formatSydneyTimestamp_(sessionDate)}`);
   console.log(`Counted By: ${countedByInput}`);
-  console.log(`Bar Stock Items: ${barStockItems.length}`);
+  console.log(`Core Order Items: ${coreOrderItems.length}`);
   console.log(`Locations: ${activeLocations.length}`);
   console.log(`Placeholders Created: ${totalPlaceholders}`);
+  console.log(`Items Skipped (no locations): ${skippedNoLocations}`);
   console.log(`Previous Counts Loaded: ${previousCountMap.size}`);
   console.log(`Archived Sessions: ${archivedSessions}`);
   console.log(`Execution Time: ${executionTime}s`);
@@ -498,11 +523,11 @@ const main = async () => {
     await writeAuditLog_(auditLogTable, {
       scriptName: CONFIG.scriptName,
       status: "SUCCESS",
-      message: `Created session with ${totalPlaceholders} stock count placeholders (${barStockItems.length} items x ${activeLocations.length} locations)`,
+      message: `Created session with ${totalPlaceholders} stock count placeholders from ${coreOrderItems.length} Core Order items (${skippedNoLocations} skipped — no locations)`,
       details: [
         `Session Date: ${formatSydneyTimestamp_(sessionDate)}`,
         `Counted By: ${countedByInput}`,
-        `Bar Stock Items: ${barStockItems.length}`,
+        `Core Order Items: ${coreOrderItems.length}`,
         `Locations: ${activeLocations.length}`,
         `Placeholders: ${totalPlaceholders}`,
         `Previous Counts Loaded: ${previousCountMap.size}`,
@@ -517,9 +542,9 @@ const main = async () => {
   // Output for Airtable interface
   output.set("status", "success");
   output.set("sessionId", sessionRecordId || "(dry run)");
-  output.set("itemCount", barStockItems.length);
-  output.set("locationCount", activeLocations.length);
+  output.set("itemCount", coreOrderItems.length);
   output.set("placeholderCount", totalPlaceholders);
+  output.set("skippedNoLocations", skippedNoLocations);
   output.set("archivedSessions", archivedSessions);
   output.set("executionTime", executionTime);
 };

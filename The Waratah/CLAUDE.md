@@ -16,6 +16,7 @@ Production instance of the PREP system for The Waratah venue.
 - Base: `1Zekjhk78dwH5MNoHXnvu1zI4VtbZNckx` - https://drive.google.com/drive/folders/1Zekjhk78dwH5MNoHXnvu1zI4VtbZNckx
 - Templates: `1f4InQCmccjUSnpEqJzz1VnrtSfmweElU` - https://drive.google.com/drive/folders/1f4InQCmccjUSnpEqJzz1VnrtSfmweElU
 - Template Upload: `1nIcn_xWjvtLbshoKLTUmcdpd75rktZwG` - https://drive.google.com/drive/folders/1nIcn_xWjvtLbshoKLTUmcdpd75rktZwG
+- Script Backups (Airtable + GAS): `1FN-IyBCXj1r_zDNunpZzR-8u8DRSSiSp` - https://drive.google.com/drive/folders/1FN-IyBCXj1r_zDNunpZzR-8u8DRSSiSp
 - Archive: (to be configured)
 
 **Knowledge Platform:** https://prep-knowledge-platform.vercel.app/?venue=waratah
@@ -37,13 +38,25 @@ The Waratah PREP system uses a two-script architecture:
 - `Waratah_FinaliseCount.gs` - Validate stocktake
 - `Waratah_GeneratePrepRun.gs` - Generate prep tasks
 - `Waratah_GeneratePrepSheet_TimeBasedPolling.gs` - Mark exports as REQUESTED
+- `Waratah_GenerateStockOrders.gs` - Generate stock orders from stocktake (writes to Stock Orders table; idempotent — deletes existing orders before regenerating)
+- `Waratah_ExportOrderingDoc.gs` - Trigger ordering doc export via GAS polling (sets "Ordering Export State" = REQUESTED on Count Sessions)
 
 **2. Google Apps Script** (run in GAS environment)
-- `GoogleDocsPrepSystem.gs` - Main export processor + Slack notifications
+- `GoogleDocsPrepSystem.gs` - Main export processor + Slack notifications + ordering export polling (`processOrderingExportRequests()`)
 - `FeedbackForm.gs` - Feedback collection backend
 - `FeedbackFormUI.html` - Feedback form UI
 - `RecipeScaler.gs` - Recipe scaling backend
 - `RecipeScalerUI.html` - Recipe scaler UI
+
+**Ordering Export Polling** (`processOrderingExportRequests()` in `GoogleDocsPrepSystem.gs`):
+- Polls Count Sessions table for records where "Ordering Export State" = "REQUESTED"
+- Calls `exportCombinedOrderingDoc_()` to generate the ordering doc
+- Sets "Ordering Export State" to COMPLETED (success) or ERROR (failure)
+- Requires a GAS time-driven trigger running every 1-2 minutes
+
+**Airtable Tables/Fields for Stock Ordering:**
+- **Count Sessions** table: "Ordering Export State" single-select field (options: REQUESTED, COMPLETED, ERROR)
+- **Stock Orders** table: one record per item with supplier, qty, unit, linked to Count Session. `Waratah_GenerateStockOrders.gs` Phase 8 cleanup deletes existing orders before regenerating (idempotent re-runs). Accepts sessions with status "Validated" or "Orders Generated".
 
 **Note — superseded script:**
 - `GeneratePrepSheet.gs` (single-record Airtable automation version) is **superseded** by `GeneratePrepSheet_TimeBasedPolling.gs` for all use cases. The single-record version requires Airtable automation infrastructure to pass `recordId` and cannot be run manually. The polling version works for both manual runs and future scheduled triggers. Use only the polling version.
@@ -58,9 +71,13 @@ Waratah_ClearWeeklyCount.gs
 Waratah_FinaliseCount.gs
 Waratah_GeneratePrepRun.gs
 Waratah_GeneratePrepSheet_TimeBasedPolling.gs
+Waratah_InitStockCount.gs
+Waratah_ValidateStockCount.gs
+Waratah_GenerateStockOrders.gs
+Waratah_ExportOrderingDoc.gs
 
-# Test harness (manual testing only)
-GoogleDocsPrepSystem_TestHarness.gs
+# Debug utilities (manual testing only)
+Debug.gs
 
 # Python scripts
 *.py
@@ -70,6 +87,13 @@ GoogleDocsPrepSystem_TestHarness.gs
 
 # Shell scripts
 *.sh
+
+# Node.js migration scripts (belong to knowledge platform, not GAS)
+setup/**
+
+# Other excludes
+.clasp.json
+.claspignore
 ```
 
 **Why this matters:**
@@ -87,6 +111,8 @@ All Waratah scripts use the `Waratah_` prefix to differentiate from Sakura House
 | Finalize stocktake | `Waratah_FinaliseCount.gs` | Airtable |
 | Generate prep run | `Waratah_GeneratePrepRun.gs` | Airtable |
 | Mark for export | `Waratah_GeneratePrepSheet_TimeBasedPolling.gs` | Airtable |
+| Generate stock orders | `Waratah_GenerateStockOrders.gs` | Airtable |
+| Trigger ordering export | `Waratah_ExportOrderingDoc.gs` | Airtable |
 | Export to docs | `GoogleDocsPrepSystem.gs` | Google Apps Script |
 | Feedback form | `FeedbackForm.gs` + `.html` | Google Apps Script |
 | Recipe scaler | `RecipeScaler.gs` + `.html` | Google Apps Script |
@@ -112,15 +138,12 @@ WARATAH_ARCHIVE_FOLDER_ID=<TO_BE_CONFIGURED>
 # Waratah Templates (Google Doc IDs)
 WARATAH_TEMPLATE_BATCHING_ID=<google-doc-id>
 WARATAH_TEMPLATE_INGREDIENT_PREP_ID=<google-doc-id>
-WARATAH_TEMPLATE_BLADE_ORDERING_ID=<google-doc-id>
-WARATAH_TEMPLATE_ANDIE_ORDERING_ID=<google-doc-id>
+WARATAH_TEMPLATE_ORDERING_ID=<google-doc-id>       # Combined ordering doc template (replaces per-staff Andie/Blade templates)
 
-# Slack Webhooks (to be configured)
-SLACK_WEBHOOK_WARATAH_BLADE=<WEBHOOK_URL>
-SLACK_WEBHOOK_WARATAH_ANDIE=<WEBHOOK_URL>
+# Slack Webhooks
 SLACK_WEBHOOK_WARATAH_PREP=<WEBHOOK_URL>   # Required by FeedbackForm.gs for production feedback posts; falls back to SLACK_WEBHOOK_EV_TEST if absent
 SLACK_WEBHOOK_WARATAH_TEST=<WEBHOOK_URL>
-SLACK_WEBHOOK_EV_TEST=<WEBHOOK_URL>        # Dev fallback used by FeedbackForm.gs when SLACK_WEBHOOK_WARATAH_PREP is not set
+SLACK_WEBHOOK_EV_TEST=<WEBHOOK_URL>        # Dev fallback for FeedbackForm.gs + combined ordering doc notifications
 
 # Security
 MANUAL_TRIGGER_SECRET=<GENERATE_RANDOM_SECRET>
@@ -156,13 +179,13 @@ AIRTABLE_PAT=<see .env.local>
 
 ## Weekly Workflow
 
-Same as Sakura House (see [main CLAUDE.md](../CLAUDE.md#workflow)):
-
-1. **Saturday AM:** Clear Weekly Count
-2. **Sat-Sun:** Physical stocktake
-3. **Monday AM:** Finalize Count
-4. **Monday PM:** Generate Prep Run → Export Docs → Slack Notifications
-5. **Tue-Fri:** Execute prep tasks
+1. **Saturday AM:** Clear Weekly Count (automatic)
+2. **Sunday:** Physical stocktake — staff count every item in Airtable Interface
+3. **Monday AM:** Finalize Count (automatic) → Generate Prep Run → Export 2 prep docs (Ingredient Prep + Batching Run Sheets) → Slack to prep channel
+4. **Monday (after bar stock count):** Combined Ordering Run Sheet generated via either: (a) manual trigger (`action=ordering` POST to doPost), or (b) Airtable button (`Waratah_ExportOrderingDoc.gs` sets "Ordering Export State" = REQUESTED on Count Sessions → GAS `processOrderingExportRequests()` polls and generates doc). Pulls bar stock orders from Stock Orders table + prep-only items from Ingredient Requirements, grouped by supplier → Slack to Evan's channel (SLACK_WEBHOOK_EV_TEST)
+5. **Monday (before 2pm):** Ordering completed by management using combined ordering doc
+6. **Tuesday:** Orders arrive
+7. **Tuesday–Wednesday:** Execute prep tasks from the docs
 
 ---
 
@@ -192,7 +215,7 @@ Same as Sakura House (see [main CLAUDE.md](../CLAUDE.md#workflow)):
 | GAS Project | ✅ Complete | Deployed and tested (2026-02-12) |
 | Drive Folders | ✅ Complete | Base + Templates configured |
 | Script Properties | ✅ Complete | All properties configured |
-| Templates | ✅ Complete | 4 beautiful templates with logo + watermark (2026-02-12) |
+| Templates | ✅ Complete | 3 templates: Batching, Ingredient Prep, Combined Ordering (Phase 3 — per-staff Andie/Blade templates retired) |
 | Web Apps | ✅ Complete | Deployed 2026-02-26; `RECIPE_SCALER_URL` updated to Waratah-specific URL |
 | Knowledge Platform | ✅ Complete | Deployed at prep-knowledge-platform.vercel.app (2026-02-20) |
 | RAG Knowledge Base | ✅ Complete | Waratah content ingested; data in `rag_chunks` + `rag_documents` tables (`waratah_rag_*` tables are empty — do not use) |
@@ -200,6 +223,67 @@ Same as Sakura House (see [main CLAUDE.md](../CLAUDE.md#workflow)):
 ---
 
 ## Recent Changes
+
+### 2026-03-16 — Stock Ordering Scripts & Ordering Export Polling
+
+**`Waratah_GenerateStockOrders.gs` — New Airtable automation script:**
+- Generates stock orders from stocktake data, writing one record per item to the Stock Orders table (supplier, qty, unit, linked to Count Session)
+- Phase 8 cleanup step deletes existing orders before regenerating (idempotent re-runs)
+- Accepts Count Sessions with status "Validated" or "Orders Generated"
+
+**`Waratah_ExportOrderingDoc.gs` — New Airtable automation script:**
+- Triggered via Airtable button; sets "Ordering Export State" = REQUESTED on the Count Sessions record
+- GAS polling function picks up the request and generates the ordering doc
+
+**`GoogleDocsPrepSystem.gs` — `processOrderingExportRequests()` added:**
+- Polls Count Sessions table for "Ordering Export State" = "REQUESTED"
+- Calls `exportCombinedOrderingDoc_()` to generate the combined ordering doc
+- Sets state to COMPLETED or ERROR after processing
+- Requires a GAS time-driven trigger every 1-2 minutes
+
+**Count Sessions table — new field:**
+- "Ordering Export State" single-select field added (options: REQUESTED, COMPLETED, ERROR)
+
+**`.claspignore` updated:**
+- Now excludes `Waratah_GenerateStockOrders.gs` and `Waratah_ExportOrderingDoc.gs` (plus previously added `Waratah_InitStockCount.gs`, `Waratah_ValidateStockCount.gs`, `Debug.gs`)
+
+**Key notes for future sessions:**
+- Ordering doc can now be triggered two ways: (a) manual POST with `action=ordering`, or (b) Airtable button via ExportOrderingDoc + GAS polling
+- `Waratah_GenerateStockOrders.gs` is idempotent — safe to re-run on the same session
+- `processOrderingExportRequests()` needs a GAS time-driven trigger (not automatic on deploy)
+
+---
+
+### 2026-03-16 — Phase 3: Combined Ordering Doc, Monday AM Export Slimmed to 2 Docs
+
+**`GoogleDocsPrepSystem.gs` — Monday AM export reduced to 2 docs (deployed via clasp push):**
+- `processExportRequests_` now generates only Ingredient Prep Run Sheet + Batching Run Sheet on Monday AM
+- Ordering docs are no longer produced during the Monday AM automatic export
+
+**`GoogleDocsPrepSystem.gs` — New manual ordering trigger (`action=ordering` in doPost):**
+- New endpoint: POST with `action=ordering` generates a single "Ordering Run Sheet" combining:
+  - Bar stock orders from the **Stock Orders** table (items with `Bar Stock = true`, session status = "Orders Generated")
+  - Prep-only items from **Ingredient Requirements** (non-bar-stock items from the active prep run)
+- Items grouped by supplier in the output doc
+- Slack notification sent to `SLACK_WEBHOOK_EV_TEST` (Evan's channel only, not per-staff channels)
+- New test function: `exportCombinedOrderingDoc_TEST()`
+
+**`GoogleDocsPrepSystem.gs` — Deleted functions and CFG props:**
+- Removed: `buildOrdering_`, `createOrderingDoc_`, `createOrReplaceOrderingDoc_`, `toSupplierBlocks_`, `matchStaff_`
+- Removed CFG props: `templateOrderingAndie`, `templateOrderingBlade`, `slackAndie`, `slackBlade`, `staffAliases`
+- New CFG props: `templateOrderingCombined` (reads `WARATAH_TEMPLATE_ORDERING_ID`), Stock Orders table/fields, Count Sessions table/fields, `itemBarStock` field
+
+**Script Properties changed:**
+- Removed: `WARATAH_TEMPLATE_ANDIE_ORDERING_ID`, `WARATAH_TEMPLATE_BLADE_ORDERING_ID`, `SLACK_WEBHOOK_WARATAH_ANDIE`, `SLACK_WEBHOOK_WARATAH_BLADE`
+- Added: `WARATAH_TEMPLATE_ORDERING_ID` (combined ordering template)
+
+**Key notes for future sessions:**
+- Monday AM automation produces exactly 2 docs (Ingredient Prep + Batching) — ordering is a separate manual step
+- Combined ordering doc requires Stock Orders to exist (generated by `Waratah_GenerateStockOrders.gs` after bar stock count)
+- Per-staff ordering (Andie/Blade split) is fully removed — all ordering is now in one combined doc
+- `SLACK_WEBHOOK_EV_TEST` is the only webhook used for ordering notifications (temporary — may move to a production channel later)
+
+---
 
 ### 2026-03-16 — Production Volume Bug Fix, Doc Layout Changes, Secrets Scrub & Git Init
 
@@ -223,9 +307,18 @@ Same as Sakura House (see [main CLAUDE.md](../CLAUDE.md#workflow)):
 - Initial commit pushed to `https://github.com/thewaratah/pollenprepsystems.git`
 - `.gitignore` excludes: `Reference/`, `node_modules/`, `.env*` files, `config/secrets` files, visual assets, RAG scripts, `.claude/` directory
 
+**`GoogleDocsPrepSystem.gs` — Item header split into two lines (deployed via clasp push):**
+- Item headers on Batching and Ingredient Prep sheets changed from single-line `"ItemName Qty (buffer)"` H1 to a two-line format:
+  - Line 1 (H1): Item name only (e.g., "Espresso Martini Batch")
+  - Line 2 (H2): `"To Make: Qty (buffer)"` (e.g., "To Make: 1000ml (1.5x = 1500ml)")
+- Applied across all 10 code paths (5 template/insert + 5 programmatic/append)
+- Sub-recipe and garnish items use H2 name + 12pt paragraph `"To Make:"` to preserve visual hierarchy under parent batch H1
+- Bold/underline styling now applies to the base quantity on the `"To Make:"` line
+
 **Key notes for future sessions:**
 - `insertParStockLines_` and `appendParStockLines_` still exist as functions but are no-ops — do not re-add par/stock/parent lines without explicit instruction
 - "Additional Tasks" section only appears on Batching and Ingredient Prep docs, never on ordering docs
+- Item headers are two-line format: H1 name then H2 "To Make: qty" — do not merge back to single-line without explicit instruction
 - Repo is now tracked at `https://github.com/thewaratah/pollenprepsystems.git`
 
 ---
@@ -497,9 +590,8 @@ Same as Sakura House (see [main CLAUDE.md](../CLAUDE.md#workflow)):
 - Tests updated in `ordering-list.test.ts`
 
 **Slack webhook env vars (Vercel + .env.local):**
-- `SLACK_WEBHOOK_WARATAH_ANDIE` (Andie's ordering notifications)
-- `SLACK_WEBHOOK_WARATAH_BLADE` (Blade's ordering notifications)
 - `SLACK_WEBHOOK_WARATAH_PREP` (General prep notifications)
+- Note: `SLACK_WEBHOOK_WARATAH_ANDIE` and `SLACK_WEBHOOK_WARATAH_BLADE` removed in Phase 3 — combined ordering doc uses `SLACK_WEBHOOK_EV_TEST` (GAS Script Property, not Vercel env var)
 
 ---
 
@@ -558,9 +650,24 @@ clasp status
 # - Waratah_FinaliseCount.gs
 # - Waratah_GeneratePrepRun.gs
 # - Waratah_GeneratePrepSheet_TimeBasedPolling.gs
+# - Waratah_GenerateStockOrders.gs
+# - Waratah_ExportOrderingDoc.gs
 ```
 
 If Airtable scripts appear in `clasp status`, they will be uploaded to GAS and cause duplicate function name errors.
+
+### Sync Scripts to Drive
+
+After modifying any `Waratah_*.gs` or `GoogleDocsPrepSystem.gs` file, sync the .txt backups to Google Drive:
+
+```bash
+cd "The Waratah/scripts"
+bash sync-airtable-scripts-to-drive.sh
+```
+
+This uploads the 4 Airtable-only scripts + `GoogleDocsPrepSystem.gs` as .txt files + a README to the [Script Backups](https://drive.google.com/drive/folders/1FN-IyBCXj1r_zDNunpZzR-8u8DRSSiSp) Drive folder. Uses the clasp OAuth token for authentication.
+
+**This must be run after every change to Waratah scripts** — it is part of the deployment checklist.
 
 ### Test Locally
 

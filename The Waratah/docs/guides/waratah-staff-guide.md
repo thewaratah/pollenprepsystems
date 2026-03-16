@@ -13,8 +13,8 @@ The PREP system tracks what we have in stock, calculates what needs to be preppe
 The system handles four things automatically:
 - **Counting** — tracks what stock we have on hand
 - **Prep lists** — calculates what needs to be made based on par levels minus current stock
-- **Ordering lists** — works out what ingredients to order, split by supplier and ordering staff (Andie or Blade)
-- **Notifications** — sends Slack messages with links to all the docs when they are ready
+- **Ordering list** — works out what ingredients to order, grouped by supplier, in a single combined ordering doc
+- **Notifications** — sends Slack messages with links to the docs when they are ready
 
 ---
 
@@ -25,13 +25,16 @@ Here is what happens each week and when:
 | When | What Happens | Who Does It |
 |------|-------------|-------------|
 | **Saturday morning** | Weekly counts are automatically cleared — the system resets for the new week | Automatic |
-| **Saturday – Sunday** | Physical stocktake — count every item and enter quantities in Airtable | Bar staff |
-| **Monday morning** | Stocktake is finalised — the system locks in your counts and checks for any missing entries | Automatic |
-| **Monday afternoon** | Prep Run is generated — the system calculates shortfalls (par level minus stock on hand) and creates prep tasks | Automatic |
-| **Monday afternoon** | Google Docs are created and Slack notifications are sent with links to all four documents | Automatic |
-| **Tuesday – Friday** | Execute prep tasks from the docs | Bar staff |
+| **Sunday** | Physical stocktake — count every item and enter quantities in the Airtable Interface | Bar staff |
+| **Monday morning** | Stocktake and count is finalised — the system locks in your counts and checks for any missing entries | Automatic |
+| **Monday morning** | Prep Run is generated — the system calculates shortfalls (par level minus stock on hand) and creates prep tasks | Automatic |
+| **Monday morning** | Prep docs are created (Ingredient Prep + Batching Run Sheets) and Slack notifications are sent with links | Automatic |
+| **Monday** | After bar stock count, the combined Ordering Run Sheet is generated and sent to Slack | Management / Automatic |
+| **Monday** | Ordering is completed by management before 2pm | Management |
+| **Tuesday** | Orders arrive | Supplier delivery |
+| **Tuesday – Wednesday** | Execute prep tasks from the docs | Bar staff |
 
-**Key rule:** All counting must be done by Monday morning. If any items have blank counts (not zero — actually blank), the system will flag them and the finalisation will warn about incomplete data.
+**Key rule:** All counting must be done by Sunday evening. If any items have blank counts (not zero — actually blank), the system will flag them and the finalisation will warn about incomplete data.
 
 ---
 
@@ -39,70 +42,72 @@ Here is what happens each week and when:
 
 ### Opening the Count Sheet
 
-1. Open the Airtable app on your phone or tablet, or go to airtable.com on a computer
-2. Open **The Waratah** base
-3. Go to the **Weekly Counts** table
-4. Use the counting view (grid view sorted by item)
+1. Open the Slack app on your phone, computer, or tablet
+2. Navigate to the pinned Airtable Interface link — this opens the Weekly Counts page
+3. Each item is categorised under its group (House Blend/Syrup, Swizzle, etc.)
 
 ### What You Will See
 
-When the week resets on Saturday, you will see placeholder records for every active item. Each one starts with a quantity of zero and is marked as "Generated / Placeholder".
+When the week resets on Saturday, you will see **0.00** for every active item.
 
 ### How to Count
 
-1. Find the item you are counting
-2. Enter the actual quantity in the **Stock Count** field
-3. The count source will update to show it has been verified
+1. Count as many locations as you can (Bars, CR, B1/2, etc.)
+2. Enter the **total volume** for each item
+3. When you are happy with your counts, there is nothing further to do on Sunday
 
 ### Important
 
-- **Enter a number for every item** — even if the count is zero, enter `0`. Do NOT leave it blank.
-- **Use the correct units** — check the Unit column if you are unsure (ml, g, each, etc.)
-- **Count before Monday morning** — the system finalises on Monday AM. Late counts will not be included.
+- **Enter a number for every item** — even if the count is zero, leave it as `0`. Do NOT leave it blank. The Saturday reset already sets every item to 0, so you only need to update items that have stock.
+- **Units are fixed in the Interface** — you cannot change units from the counting view. If something looks wrong, contact Evan.
+- **Count by end of shift Sunday** — the system finalises on Monday AM. Late counts will not be included.
 
 ### Common Mistakes
 
 | Mistake | What Happens | How to Avoid |
 |---------|-------------|-------------|
 | Leaving count blank | System flags the item as incomplete | Always enter a number, even 0 |
-| Counting in wrong units | Prep quantities will be wrong | Check the Unit column |
-| Counting after Monday AM | Count may not be included in the prep run | Finish by Sunday evening |
+| Counting in wrong units | Prep quantities will be wrong | Units are fixed in Interface — contact Evan if wrong |
+| Counting after Sunday | Count may not be included in the prep run | Finish by end of shift Sunday |
 
 ---
 
 ## 4. How to Read the Prep Run Docs
 
-Each Monday afternoon, four Google Docs are created in the shared Drive folder and linked in Slack. Here is what each one contains.
+Each Monday morning, two prep docs are created in the shared Drive folder and linked in Slack. A third doc (the ordering sheet) is generated later in the day after the bar stock count. Here is what each one contains.
 
 ### Ingredient Prep Run Sheet
 
 This is for **sub-recipes, garnishes, and other prep items** — things that need to be made but are not full batches.
 
 For each item you will see:
-- **Item name** (large heading) with the target quantity in bold
+- **Item name** (large heading on its own line)
+- **"To Make:"** line underneath showing the target quantity in bold, with the buffer amount in brackets (e.g., "To Make: 1000ml (1.5x = 1500ml)")
 - **Scale this recipe** link — opens the Recipe Scaler (see Section 5)
 - **Ingredients** — bullet list of what you need
 - **Method** — how to make it
-- **Additional Tasks** — a blank section at the end of the document where you can write in any extra tasks for the week
+- **Additional Tasks** — 7 empty checkboxes at the start of the document where you can write in any extra tasks for the week
 
 ### Batching Run Sheet
 
 This is for **full batch recipes** — the main production items.
 
-Same layout as above: item name with quantity, ingredients, method, a link to the Recipe Scaler, and an Additional Tasks section at the end.
+Same layout as above: item name heading, "To Make:" quantity line, ingredients, method, a link to the Recipe Scaler, and an Additional Tasks checkbox section at the end.
 
-### Andie Ordering Run Sheet / Blade Ordering Run Sheet
+### Ordering Run Sheet
 
-These are the **ordering docs**, one for Andie and one for Blade. Each doc lists:
-- Ingredients grouped by **supplier**
+This is a single **combined ordering doc** covering both bar stock and prep ingredients. It lists:
+- All items grouped by **supplier**
 - Supplier email or ordering method (e.g. "Portal or Other")
 - Each ingredient with the **quantity needed** plus a **1.5x buffer** amount shown in brackets
 
 **Example:** `Cream 500ml (1.5x = 750ml)` — you need 500ml but order 750ml to allow for buffer.
 
+This doc is generated after the bar stock count is done (separate from the Monday morning prep docs).
+
 ### Where to Find the Docs
 
-- **Slack** — check your channel (Andie channel, Blade channel, or the general prep channel) for the Monday notification with links
+- **Slack** — check your channel (BM channel, or the general prep channel) for the Monday notification with links
 - **Google Drive** — go to the shared Waratah Prep folder: [Google Drive Folder](https://drive.google.com/drive/folders/1Zekjhk78dwH5MNoHXnvu1zI4VtbZNckx)
 
 ### The "Name" Field
@@ -126,6 +131,7 @@ The Recipe Scaler lets you scale any recipe up or down to a specific quantity. Y
 ### When to Use It
 
 - When you need to make a different quantity than what the prep doc says
+- When you have less or more than the required constituent ingredient
 - When you want to double-check ingredient ratios
 - When training new staff on recipes
 
@@ -177,10 +183,10 @@ If you notice something wrong with a recipe, prep doc, or ordering list, submit 
 ### How to Submit
 
 1. Open the Feedback Form (link at the bottom of every prep doc, or from the Key Links section below)
-2. Select your **name** (Andie, Blade, or other staff)
+2. Select your **name**
 3. Choose the **feedback type** (Recipe Issue, Missing Data, Suggestion, etc.)
 4. Select which **document type** it relates to (Batching, Ingredient Prep, Ordering, etc.)
-5. **Describe the issue** — be specific (e.g. "Teriyaki glaze recipe says 200ml soy but should be 150ml")
+5. **Describe the issue** — be specific (e.g. "Plum Cordial recipe says 200ml honey but should be 600ml")
 6. Optionally **search for the recipe or item** using the autocomplete search
 7. Submit
 
@@ -194,15 +200,14 @@ If you notice something wrong with a recipe, prep doc, or ordering list, submit 
 
 ## 8. Slack Notifications
 
-Every Monday afternoon when the prep docs are ready, you will receive Slack notifications.
+Every Monday morning when the prep docs are ready, you will receive Slack notifications.
 
 ### What You Receive
 
 | Channel | What You Get |
 |---------|-------------|
-| **Prep channel** | Links to the Ingredient Prep Run Sheet and Batching Run Sheet |
-| **Andie's channel** | Links to Andie's Ordering Run Sheet + Ingredient Prep + Batching |
-| **Blade's channel** | Links to Blade's Ordering Run Sheet + Ingredient Prep + Batching |
+| **Prep channel** | Links to the Ingredient Prep Run Sheet and Batching Run Sheet (Monday AM) |
+| **Evan's channel** | Link to the combined Ordering Run Sheet (generated after bar stock count) |
 
 ### What the Messages Look Like
 
@@ -218,7 +223,7 @@ When someone submits feedback (see Section 7), a notification also goes to the p
 
 | Problem | What to Do |
 |---------|-----------|
-| **I can't find this week's docs** | Check the prep Slack channel for the Monday notification. If no notification was sent, check the [Google Drive folder](https://drive.google.com/drive/folders/1Zekjhk78dwH5MNoHXnvu1zI4VtbZNckx). If nothing is there, contact Evan. |
+| **I can't find this week's docs** | Check the prep Slack channel for the Monday morning notification. If no notification was sent, check the [Google Drive folder](https://drive.google.com/drive/folders/1Zekjhk78dwH5MNoHXnvu1zI4VtbZNckx). If nothing is there, contact Evan. |
 | **The counts were not cleared on Saturday** | Contact Evan — the Saturday automation may need to be re-run. |
 | **A recipe has wrong quantities** | Submit feedback through the Feedback Form (Section 7). |
 | **An item is missing from the prep list** | Check that the item is set to Active in Airtable and has a par level. If it should be there, contact Evan. |
@@ -244,8 +249,6 @@ When someone submits feedback (see Section 7), a notification also goes to the p
 | Who | For What |
 |-----|---------|
 | **Evan** | System issues, missing data, automation problems, feature requests |
-| **Andie** | Ordering queries (Andie's suppliers) |
-| **Blade** | Ordering queries (Blade's suppliers) |
 
 ---
 

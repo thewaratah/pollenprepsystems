@@ -28,23 +28,22 @@
  * - A {{CONTENT}} marker where dynamic content will be inserted
  * - Any footer elements
  *
- * Outputs (4 Docs):
- * 1) Ingredient Prep List (Sub Recipe tasks grouped by Batch)
- * 2) Batching List (Batch tasks with ingredient bullets + method)
- * 3) Andie Ordering List (Supplier headings + bullets)
- * 4) Blade Ordering List  (Supplier headings + bullets)
+ * Monday AM Outputs (2 Docs — ordering suppressed):
+ * 1) Ingredient Prep Run Sheet (Sub Recipe tasks grouped by Batch)
+ * 2) Batching Run Sheet (Batch tasks with ingredient bullets + method)
+ *
+ * Manual Trigger Output (1 Doc — after bar stock count):
+ * 3) Ordering Run Sheet (Combined bar stock + prep-only ordering, grouped by supplier)
  *
  * REQUIRED SCRIPT PROPERTIES:
  * - AIRTABLE_BASE_ID
  * - AIRTABLE_PAT
  * - DOCS_FOLDER_ID
- * - SLACK_WEBHOOK_ANDIE
- * - SLACK_WEBHOOK_BLADE
  * - SLACK_WEBHOOK_PREP
- * - SLACK_WEBHOOK_EV_TEST (optional, for testing)
- * - MANUAL_TRIGGER_SECRET (optional, for webhook triggers)
+ * - SLACK_WEBHOOK_WARATAH_TEST (test channel — combined ordering notification)
+ * - MANUAL_TRIGGER_SECRET (for webhook triggers)
  * - RECIPE_SCALER_URL (optional, deployed web app URL for Recipe Scaler)
- * - TEMPLATE_ORDERING_ID (optional, for branded templates)
+ * - WARATAH_TEMPLATE_ORDERING_ID (optional, for branded combined ordering template)
  * - TEMPLATE_BATCHING_ID (optional, for branded templates)
  * - TEMPLATE_INGREDIENT_PREP_ID (optional, for branded templates)
  ****************************************************/
@@ -57,15 +56,12 @@ const CFG = {
     airtablePat: "AIRTABLE_PAT",
     docsFolderId: "DOCS_FOLDER_ID",
 
-    slackAndie: "SLACK_WEBHOOK_WARATAH_ANDIE",
-    slackBlade: "SLACK_WEBHOOK_WARATAH_BLADE",
     slackPrep: "SLACK_WEBHOOK_PREP",
-    slackEvTest: "SLACK_WEBHOOK_EV_TEST",
+    slackWaratahTest: "SLACK_WEBHOOK_WARATAH_TEST",
     manualTriggerSecret: "MANUAL_TRIGGER_SECRET",
     recipeScalerUrl: "RECIPE_SCALER_URL",
 
-    templateOrderingAndie: "WARATAH_TEMPLATE_ANDIE_ORDERING_ID",
-    templateOrderingBlade: "WARATAH_TEMPLATE_BLADE_ORDERING_ID",
+    templateOrderingCombined: "WARATAH_TEMPLATE_ORDERING_ID",
     templateBatching: "WARATAH_TEMPLATE_BATCHING_ID",
     templateIngredientPrep: "WARATAH_TEMPLATE_INGREDIENT_PREP_ID",
     feedbackFormUrl: "FEEDBACK_FORM_URL",
@@ -80,8 +76,10 @@ const CFG = {
       recipes: "Recipes",
       recipeLines: "Recipe Lines",
       supplier: "Supplier",
-      parLevels: "Par Levels",       // ⚠️ TABLE NAME ASSUMED — verify against Airtable base
-      weeklyCounts: "Weekly Counts", // ⚠️ TABLE NAME ASSUMED — verify against Airtable base
+      parLevels: "Par Levels",           // ⚠️ TABLE NAME ASSUMED — verify against Airtable base
+      weeklyCounts: "Weekly Counts",     // ⚠️ TABLE NAME ASSUMED — verify against Airtable base
+      stockOrders: "Stock Orders",
+      countSessions: "Count Sessions",
     },
 
     fields: {
@@ -119,7 +117,7 @@ const CFG = {
       // Par Levels table fields
       // ⚠️ FIELD NAMES ASSUMED — verify against Airtable base
       parItem: "Item Link",   // linked record field pointing to Items table
-      parQty: "Par Qty",     // numeric par quantity
+      parQty: "Prep Qty",     // numeric par quantity
 
       // Weekly Counts table fields
       // ⚠️ FIELD NAMES ASSUMED — verify against Airtable base
@@ -131,6 +129,29 @@ const CFG = {
       supplierName: "Supplier Name",
       supplierOrderingStaff: "Ordering Staff",
       supplierEmail: "Email",
+
+      // Stock Orders fields (populated by Waratah_GenerateStockOrders.gs)
+      soItem: "Item",                          // linked record → Items
+      soSession: "Count Session",              // linked record → Count Sessions
+      soOnHand: "Total On Hand",
+      soPrepUsage: "Prep Usage",
+      soParQty: "Prep Qty",
+      soServiceShortfall: "Service Shortfall",
+      soCombinedQty: "Combined Order Qty",
+      soSupplierStatic: "Supplier Name (Static)",
+      soCategoryStatic: "Product Category (Static)",
+      soStaffStatic: "Ordering Staff (Static)",
+      soStatus: "Status",
+
+      // Count Sessions fields
+      csStatus: "Status",
+      csDate: "Session Date",
+      csName: "Session Name",
+      csCountedBy: "Counted By",
+      csOrderingExportState: "Ordering Export State",  // Single select: REQUESTED / COMPLETED / ERROR
+
+      // Items — Bar Stock flag (used by combined ordering to identify prep-only items)
+      itemBarStock: "Bar Stock",
     },
 
     itemTypes: {
@@ -144,10 +165,6 @@ const CFG = {
       ingredientPrepOnly: new Set(["Garnish", "Other"]),
     },
 
-    staffAliases: {
-      andie: ["andie"],
-      blade: ["blade"],
-    },
   },
 
   bufferMultiplier: 1.5,
@@ -201,6 +218,23 @@ function doPost(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
 
+    const action = String(body.action || "export").toLowerCase();
+
+    // ── Combined ordering doc (manual trigger after bar stock count) ──
+    if (action === "ordering") {
+      const notifySlack = body.notifySlack !== false;
+      SKIP_SLACK = !notifySlack;
+      try {
+        const result = exportCombinedOrderingDoc_();
+        return ContentService
+          .createTextOutput(JSON.stringify({ ok: true, action: "ordering", result }))
+          .setMimeType(ContentService.MimeType.JSON);
+      } finally {
+        SKIP_SLACK = false;
+      }
+    }
+
+    // ── Standard prep export (Monday AM automation) ──
     const runId = body.runId || null;
     const mode = String(body.mode || "LIVE").toUpperCase();
     const notifySlack = body.notifySlack !== false;
@@ -537,8 +571,6 @@ function exportLatestPrepRunToDocs() {
 
   const ingredientTitle = `Ingredient Prep Run Sheet ${weekEnding}`;
   const batchingTitle   = `Batching Run Sheet ${weekEnding}`;
-  const andieTitle      = `Andie Prep Ordering List ${weekEnding}`;
-  const bladeTitle      = `Blade Prep Ordering List ${weekEnding}`;
 
   const ingredientDocId = createIngredientPrepDoc_(
     runFolder, ingredientTitle, runDateFormatted, runLabel,
@@ -552,17 +584,10 @@ function exportLatestPrepRunToDocs() {
     run.id
   );
 
-  const ordering = buildOrdering_(reqs, itemsById, suppliersById);
-
-  const andieDocId = createOrderingDoc_(
-    runFolder, andieTitle, runDateFormatted, runLabel, "ANDIE", ordering.andie,
-    run.id
-  );
-
-  const bladeDocId = createOrderingDoc_(
-    runFolder, bladeTitle, runDateFormatted, runLabel, "BLADE", ordering.blade,
-    run.id
-  );
+  // ── Ordering docs SUPPRESSED from Monday AM export ──
+  // Combined ordering doc is generated separately via manual trigger (action=ordering)
+  // after bar stock count is completed and Stock Orders are generated.
+  // See exportCombinedOrderingDoc_() below.
 
   const runFolderUrl = runFolder.getUrl();
 
@@ -574,8 +599,6 @@ function exportLatestPrepRunToDocs() {
     runLabel,
     ingredientDoc: { title: ingredientTitle, url: docUrl_(ingredientDocId) },
     batchingDoc: { title: batchingTitle, url: docUrl_(batchingDocId) },
-    andieDoc: { title: andieTitle, url: docUrl_(andieDocId) },
-    bladeDoc: { title: bladeTitle, url: docUrl_(bladeDocId) },
   });
 
   const result = {
@@ -585,8 +608,6 @@ function exportLatestPrepRunToDocs() {
     docs: {
       ingredient: { title: ingredientTitle, url: docUrl_(ingredientDocId) },
       batching: { title: batchingTitle, url: docUrl_(batchingDocId) },
-      andie: { title: andieTitle, url: docUrl_(andieDocId) },
-      blade: { title: bladeTitle, url: docUrl_(bladeDocId) },
     },
   };
 
@@ -596,9 +617,18 @@ function exportLatestPrepRunToDocs() {
 }
 
 function exportLatestPrepRunToDocs_TEST() {
-  SLACK_WEBHOOK_OVERRIDE = getSlackWebhook_(CFG.props.slackEvTest);
+  SLACK_WEBHOOK_OVERRIDE = getSlackWebhook_(CFG.props.slackWaratahTest);
   try {
     return exportLatestPrepRunToDocs();
+  } finally {
+    SLACK_WEBHOOK_OVERRIDE = null;
+  }
+}
+
+function exportCombinedOrderingDoc_TEST() {
+  SLACK_WEBHOOK_OVERRIDE = getSlackWebhook_(CFG.props.slackWaratahTest);
+  try {
+    return exportCombinedOrderingDoc_();
   } finally {
     SLACK_WEBHOOK_OVERRIDE = null;
   }
@@ -838,122 +868,6 @@ function removeElementsContainingText_(body, searchText) {
 }
 
 /* =========================================================
- * ORDERING DOC (TEMPLATE-FIRST)
- * ======================================================= */
-
-function createOrderingDoc_(folder, title, dateFormatted, runLabel, staffName, data, runId) {
-  const templatePropKey = staffName === "ANDIE" ? CFG.props.templateOrderingAndie : CFG.props.templateOrderingBlade;
-  const templateId = getOptionalProp_(templatePropKey);
-  const staffRole = staffName === "ANDIE" ? "Ordering - Andie" : staffName === "BLADE" ? "Ordering - Blade" : "Ordering";
-
-  if (templateId && templateExists_(templateId)) {
-    try {
-      return createOrderingDocFromTemplate_(folder, title, dateFormatted, runLabel, staffName, data, templateId, runId, staffRole);
-    } catch (e) {
-      Logger.log(`Template processing failed for Ordering doc: ${e.message}. Falling back to programmatic.`);
-      Logger.log(e.stack);
-    }
-  } else {
-    Logger.log("Template not found for Ordering doc, using programmatic fallback.");
-  }
-
-  return createOrReplaceOrderingDoc_(folder, title, dateFormatted, staffName, data, runId, staffRole);
-}
-
-/**
- * HYBRID TEMPLATE APPROACH (v4.2)
- * Template provides: header branding, styling, logo
- * Code provides: all dynamic content (suppliers, items, etc.)
- *
- * Template should contain:
- * - Header with {{DATE}}, {{RUN_LABEL}}, {{STAFF_NAME}} placeholders
- * - A {{CONTENT}} marker where dynamic content will be inserted
- * - Any footer/branding elements
- */
-function createOrderingDocFromTemplate_(folder, title, dateFormatted, runLabel, staffName, data, templateId, runId, staffRole) {
-  trashExistingByName_(folder, title);
-
-  const doc = copyTemplate_(templateId, folder, title);
-  const body = doc.getBody();
-
-  // Replace header placeholders
-  replaceAllPlaceholders_(doc, {
-    DATE: dateFormatted,
-    RUN_LABEL: runLabel,
-    STAFF_NAME: staffName,
-  });
-
-  // Find and remove {{CONTENT}} marker, get insertion point
-  const contentMarker = "{{CONTENT}}";
-  const searchResult = body.findText(contentMarker);
-  let insertIndex = body.getNumChildren(); // Default: append at end
-
-  if (searchResult) {
-    const element = searchResult.getElement();
-    let parent = element.getParent();
-    while (parent.getParent() && parent.getParent().getType() !== DocumentApp.ElementType.BODY_SECTION) {
-      parent = parent.getParent();
-    }
-    insertIndex = body.getChildIndex(parent);
-    body.removeChild(parent);
-  }
-
-  // Remove any pre-existing "NEEDS ASSIGNMENT" sections from template
-  // (template should only have header branding, not content)
-  removeElementsContainingText_(body, "NEEDS ASSIGNMENT");
-  removeElementsContainingText_(body, "need supplier/staff assignment");
-
-  // Insert feedback link at the top of content
-  insertIndex = insertFeedbackLink_(body, insertIndex, runId, title, staffRole);
-
-  // Now append content programmatically (same logic as fallback)
-  const suppliers = data?.suppliers || [];
-  const needsRouting = data?.needsRouting || [];
-
-  if (!suppliers.length && !needsRouting.length) {
-    body.insertParagraph(insertIndex, "No ordering lines found.");
-  } else {
-    let idx = insertIndex;
-
-    suppliers.forEach((s) => {
-      body.insertParagraph(idx++, s.supplierName).setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
-
-      if (s.supplierEmail && s.supplierEmail.trim()) {
-        body.insertParagraph(idx++, s.supplierEmail.trim()).setFontFamily("Avenir");
-      } else {
-        body.insertParagraph(idx++, "Portal or Other").setFontFamily("Avenir");
-      }
-
-      (s.lines || []).forEach((l) => {
-        const bulletText = `${l.itemName} ${formatQtyWithBuffer_(l.qty, l.unit)}`.trim();
-        const li = body.insertListItem(idx++, bulletText);
-        li.setGlyphType(DocumentApp.GlyphType.BULLET).setFontFamily("Avenir");
-
-        const baseQty = `${fmtQty_(l.qty)}${l.unit || ""}`;
-        appendTextWithBoldUnderline_(li, bulletText, baseQty);
-      });
-    });
-
-    // Add unassigned/needs routing items at the END
-    if (needsRouting.length) {
-      body.insertParagraph(idx++, ""); // Blank line
-      body.insertParagraph(idx++, "⚠️ NEEDS ASSIGNMENT").setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
-      body.insertParagraph(idx++, "These items need supplier/staff assignment in Airtable:").setFontFamily("Avenir");
-
-      needsRouting.forEach((r) => {
-        const bulletText = `${r.supplierName}: ${r.itemName} ${formatQtyWithBuffer_(r.qty, r.unit)}`.trim();
-        const li = body.insertListItem(idx++, bulletText);
-        li.setGlyphType(DocumentApp.GlyphType.BULLET).setFontFamily("Avenir");
-      });
-    }
-  }
-
-  cleanupMarkers_(body);
-  doc.saveAndClose();
-  return doc.getId();
-}
-
-/* =========================================================
  * BATCHING DOC (TEMPLATE-FIRST)
  * ======================================================= */
 
@@ -1034,12 +948,13 @@ function createBatchingDocFromTemplate_(folder, title, dateFormatted, runLabel, 
       if (i > 0) body.insertHorizontalRule(idx++);
       if (i > 0) body.insertPageBreak(idx++);
 
-      const batchHeader = `${t.itemName} ${formatQtyWithBuffer_(t.targetQty, t.unit)}`.trim();
-      const batchPara = body.insertParagraph(idx++, batchHeader);
+      const batchPara = body.insertParagraph(idx++, t.itemName);
       batchPara.setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
-
+      const toMakeText = `To Make: ${formatQtyWithBuffer_(t.targetQty, t.unit)}`.trim();
+      const toMakePara = body.insertParagraph(idx++, toMakeText);
+      toMakePara.setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
       const baseQtyText = `${fmtQty_(t.targetQty)}${t.unit || ""}`;
-      appendTextWithBoldUnderline_(batchPara, batchHeader, baseQtyText);
+      appendTextWithBoldUnderline_(toMakePara, toMakeText, baseQtyText);
 
       // Par level + stock counted lines (HEADING3) immediately after the item heading
       idx = insertParStockLines_(body, idx, t);
@@ -1212,10 +1127,12 @@ function createIngredientPrepDocFromTemplate_(folder, title, dateFormatted, runL
         if (i > 0) body.insertHorizontalRule(idx++);
         if (i > 0) body.insertPageBreak(idx++);
 
-        const taskHeader = `${task.itemName} ${formatQtyWithBuffer_(task.targetQty, task.unit)}`.trim();
-        const taskPara = body.insertParagraph(idx++, taskHeader);
+        const taskPara = body.insertParagraph(idx++, task.itemName);
         taskPara.setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
-        appendTextWithBoldUnderline_(taskPara, taskHeader, `${fmtQty_(task.targetQty)}${task.unit || ""}`);
+        const taskToMakeText = `To Make: ${formatQtyWithBuffer_(task.targetQty, task.unit)}`.trim();
+        const taskToMakePara = body.insertParagraph(idx++, taskToMakeText);
+        taskToMakePara.setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
+        appendTextWithBoldUnderline_(taskToMakePara, taskToMakeText, `${fmtQty_(task.targetQty)}${task.unit || ""}`);
 
         // Par level + stock counted lines (HEADING3) immediately after the item heading
         idx = insertParStockLines_(body, idx, task);
@@ -1282,12 +1199,13 @@ function createIngredientPrepDocFromTemplate_(folder, title, dateFormatted, runL
       if (batchIdx > 0) body.insertHorizontalRule(idx++);
       if (batchIdx > 0) body.insertPageBreak(idx++);
 
-      const batchHeader = `${batch.itemName} ${formatQtyWithBuffer_(batch.targetQty, batch.unit)}`.trim();
-      const batchPara = body.insertParagraph(idx++, batchHeader);
+      const batchPara = body.insertParagraph(idx++, batch.itemName);
       batchPara.setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
-
+      const batchToMakeText = `To Make: ${formatQtyWithBuffer_(batch.targetQty, batch.unit)}`.trim();
+      const batchToMakePara = body.insertParagraph(idx++, batchToMakeText);
+      batchToMakePara.setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
       const batchBaseQty = `${fmtQty_(batch.targetQty)}${batch.unit || ""}`;
-      appendTextWithBoldUnderline_(batchPara, batchHeader, batchBaseQty);
+      appendTextWithBoldUnderline_(batchToMakePara, batchToMakeText, batchBaseQty);
 
       // Par level + stock counted lines (HEADING3) immediately after the batch heading
       idx = insertParStockLines_(body, idx, batch);
@@ -1309,12 +1227,13 @@ function createIngredientPrepDocFromTemplate_(folder, title, dateFormatted, runL
 
         printedSub.add(subId);
 
-        const subHeader = `${subTask.itemName} ${formatQtyWithBuffer_(subTask.targetQty, subTask.unit)}`.trim();
-        const subPara = body.insertParagraph(idx++, subHeader);
+        const subPara = body.insertParagraph(idx++, subTask.itemName);
         subPara.setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
-
+        const subToMakeText = `To Make: ${formatQtyWithBuffer_(subTask.targetQty, subTask.unit)}`.trim();
+        const subToMakePara = body.insertParagraph(idx++, subToMakeText);
+        subToMakePara.setFontFamily("Avenir").setFontSize(12);
         const subBaseQty = `${fmtQty_(subTask.targetQty)}${subTask.unit || ""}`;
-        appendTextWithBoldUnderline_(subPara, subHeader, subBaseQty);
+        appendTextWithBoldUnderline_(subToMakePara, subToMakeText, subBaseQty);
 
         // Add scaler link for sub-recipe if configured
         const subScalerLink = getScalerLink_(subTask.recipeId);
@@ -1399,10 +1318,12 @@ function createIngredientPrepDocFromTemplate_(folder, title, dateFormatted, runL
       garnishHeadPara.setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
 
       garnishOtherTasks.forEach((task) => {
-        const taskHeader = `${task.itemName} ${formatQtyWithBuffer_(task.targetQty, task.unit)}`.trim();
-        const taskPara = body.insertParagraph(idx++, taskHeader);
-        taskPara.setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
-        appendTextWithBoldUnderline_(taskPara, taskHeader, `${fmtQty_(task.targetQty)}${task.unit || ""}`);
+        const garnishPara = body.insertParagraph(idx++, task.itemName);
+        garnishPara.setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
+        const garnishToMakeText = `To Make: ${formatQtyWithBuffer_(task.targetQty, task.unit)}`.trim();
+        const garnishToMakePara = body.insertParagraph(idx++, garnishToMakeText);
+        garnishToMakePara.setFontFamily("Avenir").setFontSize(12);
+        appendTextWithBoldUnderline_(garnishToMakePara, garnishToMakeText, `${fmtQty_(task.targetQty)}${task.unit || ""}`);
 
         // Par level + stock counted lines (HEADING3) immediately after the item heading
         idx = insertParStockLines_(body, idx, task);
@@ -1465,47 +1386,21 @@ function createIngredientPrepDocFromTemplate_(folder, title, dateFormatted, runL
  * SLACK
  * ======================================================= */
 
-function postPrepRunToSlack_({ runLabel, ingredientDoc, batchingDoc, andieDoc, bladeDoc }) {
+function postPrepRunToSlack_({ runLabel, ingredientDoc, batchingDoc }) {
   if (SKIP_SLACK) return;
 
-  if (SLACK_WEBHOOK_OVERRIDE) {
-    const text =
-      `*Prep Run ${runLabel} — TEST (Evan)*\n` +
-      `• ${slackLink_(ingredientDoc.url, ingredientDoc.title)}\n` +
-      `• ${slackLink_(batchingDoc.url, batchingDoc.title)}\n` +
-      `• ${slackLink_(andieDoc.url, andieDoc.title)}\n` +
-      `• ${slackLink_(bladeDoc.url, bladeDoc.title)}`;
-
-    postToSlack_(SLACK_WEBHOOK_OVERRIDE, text);
-    return;
-  }
-
-  const prepWebhook  = getSlackWebhook_(CFG.props.slackPrep);
-  const andieWebhook = getSlackWebhook_(CFG.props.slackAndie);
-  const bladeWebhook = getSlackWebhook_(CFG.props.slackBlade);
-
-  const prepText =
+  const text =
     `*Prep Run ${runLabel}*\n` +
     `• ${slackLink_(ingredientDoc.url, ingredientDoc.title)}\n` +
     `• ${slackLink_(batchingDoc.url, batchingDoc.title)}`;
 
-  const andieText =
-    `*Prep Run ${runLabel} — Ordering (Andie)*\n` +
-    `• ${slackLink_(andieDoc.url, andieDoc.title)}\n` +
-    `• ${slackLink_(ingredientDoc.url, ingredientDoc.title)}\n` +
-    `• ${slackLink_(batchingDoc.url, batchingDoc.title)}`;
+  if (SLACK_WEBHOOK_OVERRIDE) {
+    postToSlack_(SLACK_WEBHOOK_OVERRIDE, text);
+    return;
+  }
 
-  const bladeText =
-    `*Prep Run ${runLabel} — Ordering (Blade)*\n` +
-    `• ${slackLink_(bladeDoc.url, bladeDoc.title)}\n` +
-    `• ${slackLink_(ingredientDoc.url, ingredientDoc.title)}\n` +
-    `• ${slackLink_(batchingDoc.url, batchingDoc.title)}`;
-
-  tryPostToSlack_(prepWebhook, prepText, "Prep");
-  Utilities.sleep(250);
-  tryPostToSlack_(andieWebhook, andieText, "Andie");
-  Utilities.sleep(250);
-  tryPostToSlack_(bladeWebhook, bladeText, "Blade");
+  const prepWebhook = getSlackWebhook_(CFG.props.slackPrep);
+  tryPostToSlack_(prepWebhook, text, "Prep");
 }
 
 function postToSlack_(webhookUrl, text) {
@@ -1712,8 +1607,8 @@ function appendFeedbackLink_(body, prepRunId, docType, staffRole) {
 function appendAdditionalTasks_(body) {
   body.appendParagraph("Additional Tasks")
     .setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
-  for (var i = 0; i < 10; i++) {
-    body.appendParagraph("").setFontFamily("Avenir");
+  for (var i = 0; i < 7; i++) {
+    body.appendListItem("").setGlyphType(DocumentApp.GlyphType.SQUARE_BULLET).setFontFamily("Avenir");
   }
 }
 
@@ -1727,8 +1622,8 @@ function appendAdditionalTasks_(body) {
 function insertAdditionalTasks_(body, idx) {
   body.insertParagraph(idx++, "Additional Tasks")
     .setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
-  for (var i = 0; i < 10; i++) {
-    body.insertParagraph(idx++, "").setFontFamily("Avenir");
+  for (var i = 0; i < 7; i++) {
+    body.insertListItem(idx++, "").setGlyphType(DocumentApp.GlyphType.SQUARE_BULLET).setFontFamily("Avenir");
   }
   return idx;
 }
@@ -1774,11 +1669,11 @@ function createOrReplaceBatchingDoc_(folder, title, dateFormatted, batchTasks, l
     if (i > 0) body.appendHorizontalRule();
     if (i > 0) body.appendPageBreak();
 
-    const batchHeader = `${t.itemName} ${formatQtyWithBuffer_(t.targetQty, t.unit)}`.trim();
-    const batchPara = body.appendParagraph(batchHeader).setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
-
+    const batchPara = body.appendParagraph(t.itemName).setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
+    const toMakeText = `To Make: ${formatQtyWithBuffer_(t.targetQty, t.unit)}`.trim();
+    const toMakePara = body.appendParagraph(toMakeText).setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
     const baseQtyText = `${fmtQty_(t.targetQty)}${t.unit || ""}`;
-    appendTextWithBoldUnderline_(batchPara, batchHeader, baseQtyText);
+    appendTextWithBoldUnderline_(toMakePara, toMakeText, baseQtyText);
 
     // Par level + stock counted lines (HEADING3) immediately after the item heading
     appendParStockLines_(body, t);
@@ -1904,9 +1799,10 @@ function createOrReplaceIngredientPrepDoc_(folder, title, dateFormatted, batchTa
       if (i > 0) body.appendHorizontalRule();
       if (i > 0) body.appendPageBreak();
 
-      const taskHeader = `${task.itemName} ${formatQtyWithBuffer_(task.targetQty, task.unit)}`.trim();
-      const taskPara = body.appendParagraph(taskHeader).setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
-      appendTextWithBoldUnderline_(taskPara, taskHeader, `${fmtQty_(task.targetQty)}${task.unit || ""}`);
+      const taskPara = body.appendParagraph(task.itemName).setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
+      const taskToMakeText = `To Make: ${formatQtyWithBuffer_(task.targetQty, task.unit)}`.trim();
+      const taskToMakePara = body.appendParagraph(taskToMakeText).setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
+      appendTextWithBoldUnderline_(taskToMakePara, taskToMakeText, `${fmtQty_(task.targetQty)}${task.unit || ""}`);
 
       // Par level + stock counted lines (HEADING3) immediately after the item heading
       appendParStockLines_(body, task);
@@ -1976,11 +1872,11 @@ function createOrReplaceIngredientPrepDoc_(folder, title, dateFormatted, batchTa
     if (batchIdx > 0) body.appendHorizontalRule();
     if (batchIdx > 0) body.appendPageBreak();
 
-    const batchHeader = `${batch.itemName} ${formatQtyWithBuffer_(batch.targetQty, batch.unit)}`.trim();
-    const batchPara = body.appendParagraph(batchHeader).setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
-
+    const batchPara = body.appendParagraph(batch.itemName).setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
+    const batchToMakeText = `To Make: ${formatQtyWithBuffer_(batch.targetQty, batch.unit)}`.trim();
+    const batchToMakePara = body.appendParagraph(batchToMakeText).setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
     const batchBaseQty = `${fmtQty_(batch.targetQty)}${batch.unit || ""}`;
-    appendTextWithBoldUnderline_(batchPara, batchHeader, batchBaseQty);
+    appendTextWithBoldUnderline_(batchToMakePara, batchToMakeText, batchBaseQty);
 
     // Par level + stock counted lines (HEADING3) immediately after the batch heading
     appendParStockLines_(body, batch);
@@ -2002,11 +1898,12 @@ function createOrReplaceIngredientPrepDoc_(folder, title, dateFormatted, batchTa
 
       printedSub.add(subId);
 
-      const subHeader = `${subTask.itemName} ${formatQtyWithBuffer_(subTask.targetQty, subTask.unit)}`.trim();
-      const subPara = body.appendParagraph(subHeader).setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
-
+      const subPara = body.appendParagraph(subTask.itemName).setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
+      const subToMakeText = `To Make: ${formatQtyWithBuffer_(subTask.targetQty, subTask.unit)}`.trim();
+      const subToMakePara = body.appendParagraph(subToMakeText);
+      subToMakePara.setFontFamily("Avenir").setFontSize(12);
       const subBaseQty = `${fmtQty_(subTask.targetQty)}${subTask.unit || ""}`;
-      appendTextWithBoldUnderline_(subPara, subHeader, subBaseQty);
+      appendTextWithBoldUnderline_(subToMakePara, subToMakeText, subBaseQty);
 
       // Add scaler link for sub-recipe if configured
       const subScalerLink = getScalerLink_(subTask.recipeId);
@@ -2088,9 +1985,11 @@ function createOrReplaceIngredientPrepDoc_(folder, title, dateFormatted, batchTa
     body.appendParagraph("Garnish & Other").setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
 
     garnishOtherTasks.forEach((task) => {
-      const taskHeader = `${task.itemName} ${formatQtyWithBuffer_(task.targetQty, task.unit)}`.trim();
-      const taskPara = body.appendParagraph(taskHeader).setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
-      appendTextWithBoldUnderline_(taskPara, taskHeader, `${fmtQty_(task.targetQty)}${task.unit || ""}`);
+      const garnishPara = body.appendParagraph(task.itemName).setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
+      const garnishToMakeText = `To Make: ${formatQtyWithBuffer_(task.targetQty, task.unit)}`.trim();
+      const garnishToMakePara = body.appendParagraph(garnishToMakeText);
+      garnishToMakePara.setFontFamily("Avenir").setFontSize(12);
+      appendTextWithBoldUnderline_(garnishToMakePara, garnishToMakeText, `${fmtQty_(task.targetQty)}${task.unit || ""}`);
 
       // Par level + stock counted lines (HEADING3) immediately after the item heading
       appendParStockLines_(body, task);
@@ -2164,163 +2063,350 @@ function appendMultiline_(body, text) {
  * ORDERING FALLBACK
  * ======================================================= */
 
-function buildOrdering_(reqs, itemsById, suppliersById) {
-  const andieMap = new Map();
-  const bladeMap = new Map();
-  const needsRouting = [];
+/* =========================================================
+ * COMBINED ORDERING DOC EXPORT
+ *
+ * Triggered manually by Evan after bar stock count is complete
+ * and Waratah_GenerateStockOrders has created Stock Order records.
+ *
+ * Reads:
+ * - Stock Orders (session status = "Orders Generated") — bar stock items
+ * - Ingredient Requirements (from latest Prep Run) — prep-only items
+ *   (items with Bar Stock = false that aren't made in-house)
+ *
+ * Produces a single ordering doc grouped by supplier, with a
+ * "PREP-ONLY ITEMS" section for non-bar-stock ingredients.
+ * ======================================================= */
 
-  reqs.forEach((r) => {
-    const itemId = firstId_(r.fields[CFG.airtable.fields.reqItem]);
-    const item = itemId ? itemsById[itemId] : null;
-    const itemName = item ? (item.fields[CFG.airtable.fields.itemName] || "(Unnamed Item)") : "(Unknown Item)";
-    const unit = item ? cellToText_(item.fields[CFG.airtable.fields.itemUnit]) : "";
-    const qty = num_(r.fields[CFG.airtable.fields.reqQty]);
-    if (!Number.isFinite(qty) || qty === 0) return;
+function exportCombinedOrderingDoc_() {
+  const F = CFG.airtable.fields;
+  const T = CFG.airtable.tables;
 
-    // Skip items that are made in-house (Batch, Sub Recipe, Sub-recipe, Garnish, Other) - not ordered
-    const itemType = item ? normaliseItemType_(cellToText_(item.fields[CFG.airtable.fields.itemType])) : "";
-    if (
-      itemType === CFG.airtable.itemTypes.batch ||
-      itemType === CFG.airtable.itemTypes.subRecipe ||
-      CFG.airtable.itemTypes.subRecipeVariants.has(itemType) ||
-      CFG.airtable.itemTypes.ingredientPrepOnly.has(itemType)
-    ) {
-      return;
-    }
-
-    const supplierId = firstId_(r.fields[CFG.airtable.fields.reqSupplierLink]);
-    const supplierRec = supplierId ? suppliersById[supplierId] : null;
-    const supplierName = firstNonEmpty_([
-      r.fields[CFG.airtable.fields.reqSupplierNameStatic],
-      supplierRec ? supplierRec.fields[CFG.airtable.fields.supplierName] : ""
-    ]) || "UNASSIGNED SUPPLIER";
-
-    const staffText = firstNonEmpty_([
-      r.fields[CFG.airtable.fields.reqStaffStatic],
-      supplierRec ? supplierRec.fields[CFG.airtable.fields.supplierOrderingStaff] : "",
-      cellToText_(r.fields[CFG.airtable.fields.reqOrderingStaff]),
-    ]) || "";
-
-    const staffKey = matchStaff_(String(staffText));
-
-    const supplierLower = supplierName.toLowerCase();
-    const staffLower = staffText.toLowerCase();
-
-    if (supplierLower.includes("in house") || staffLower.includes("in house")) {
-      return;
-    }
-
-    if (supplierLower.includes("unassigned") || !staffKey) {
-      needsRouting.push({ supplierName, itemName, unit, qty });
-      return;
-    }
-
-    const key = `${supplierName}|||${itemName}|||${unit}`;
-    const row = { supplierName, itemName, unit, qty };
-    const map = staffKey === "andie" ? andieMap : bladeMap;
-    if (map.has(key)) map.get(key).qty += qty;
-    else map.set(key, row);
+  // ── 1. Find the latest "Orders Generated" session ──
+  const sessions = airtableListAll_(T.countSessions, {
+    fields: [F.csStatus, F.csDate, F.csCountedBy],
+    filterByFormula: `{${F.csStatus}}="Orders Generated"`,
+    pageSize: 20,
   });
 
-  return {
-    andie: toSupplierBlocks_(andieMap, needsRouting, suppliersById),
-    blade: toSupplierBlocks_(bladeMap, needsRouting, suppliersById),
-  };
-}
-
-function toSupplierBlocks_(map, needsRouting, suppliersById) {
-  const rows = Array.from(map.values());
-
-  const bySupplier = new Map();
-  rows.forEach((r) => {
-    if (!bySupplier.has(r.supplierName)) bySupplier.set(r.supplierName, []);
-    bySupplier.get(r.supplierName).push(r);
-  });
-
-  const suppliers = Array.from(bySupplier.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([supplierName, lines]) => {
-      lines.sort((x, y) => x.itemName.localeCompare(y.itemName));
-
-      let supplierEmail = "";
-      if (suppliersById) {
-        const supplierRec = Object.values(suppliersById).find(
-          s => s.fields[CFG.airtable.fields.supplierName] === supplierName
-        );
-        if (supplierRec) {
-          supplierEmail = cellToText_(supplierRec.fields[CFG.airtable.fields.supplierEmail]) || "";
-        }
-      }
-
-      return { supplierName, supplierEmail, lines };
-    });
-
-  const routing = (needsRouting || [])
-    .slice()
-    .sort((a, b) => (a.supplierName + a.itemName).localeCompare(b.supplierName + b.itemName));
-
-  return { suppliers, needsRouting: routing };
-}
-
-function createOrReplaceOrderingDoc_(folder, title, dateFormatted, owner, data, runId, staffRole) {
-  trashExistingByName_(folder, title);
-
-  const doc = DocumentApp.create(title);
-  const id = doc.getId();
-  moveToFolder_(id, folder);
-  doc.setName(title);
-
-  const body = doc.getBody();
-  body.clearContent();
-
-  body.appendParagraph(title).setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
-  body.appendParagraph(dateFormatted).setHeading(DocumentApp.ParagraphHeading.SUBTITLE).setFontFamily("Avenir");
-
-  // Add feedback link
-  appendFeedbackLink_(body, runId, title, staffRole);
-
-  const suppliers = data?.suppliers || [];
-  const needsRouting = data?.needsRouting || [];
-
-  if (!suppliers.length && !needsRouting.length) {
-    body.appendParagraph("No ordering lines found.");
-    doc.saveAndClose();
-    return id;
+  if (!sessions.length) {
+    throw new Error('No Count Session with status "Orders Generated" found. Run the bar stock count workflow first.');
   }
 
-  suppliers.forEach((s) => {
-    body.appendParagraph(s.supplierName).setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
+  sessions.sort((a, b) => {
+    const da = a.fields[F.csDate] || "";
+    const db = b.fields[F.csDate] || "";
+    return db.localeCompare(da);
+  });
 
-    if (s.supplierEmail && s.supplierEmail.trim()) {
-      body.appendParagraph(s.supplierEmail.trim()).setFontFamily("Avenir");
+  const session = sessions[0];
+  const sessionName = session.fields[F.csDate] || "Stock Count";
+  const sessionDate = session.fields[F.csDate] || "";
+  const countedBy = cellToText_(session.fields[F.csCountedBy]) || "Evan";
+
+  // ── 2. Fetch Stock Orders for this session ──
+  // Filter by linked Count Session record ID using FIND() on the linked field
+  const allOrders = airtableListAll_(T.stockOrders, {
+    fields: [
+      F.soItem, F.soSession, F.soOnHand, F.soPrepUsage,
+      F.soParQty, F.soServiceShortfall, F.soCombinedQty,
+      F.soSupplierStatic, F.soCategoryStatic, F.soStaffStatic, F.soStatus,
+    ],
+    pageSize: 100,
+  });
+
+  // Client-side filter: match orders linked to this session
+  const orders = allOrders.filter(o => {
+    const sessionIds = o.fields[F.soSession];
+    return Array.isArray(sessionIds) && sessionIds.includes(session.id);
+  });
+
+  Logger.log(`Stock Orders fetched: ${orders.length} records for session ${session.id}`);
+
+  // Collect item IDs from orders to resolve names
+  const orderItemIds = new Set();
+  orders.forEach(o => {
+    const itemId = firstId_(o.fields[F.soItem]);
+    if (itemId) orderItemIds.add(itemId);
+  });
+
+  // ── 3. Fetch items for name resolution ──
+  const orderItemsById = orderItemIds.size
+    ? indexById_(airtableGetByIds_(T.items, Array.from(orderItemIds), [
+        F.itemName, F.itemUnit, F.itemType, F.itemBarStock,
+      ]))
+    : {};
+
+  // ── 4. Build supplier-grouped bar stock order rows ──
+  const supplierMap = new Map();     // supplierName → [rows]
+  const noSupplierRows = [];
+
+  orders.forEach(o => {
+    const combinedQty = num_(o.fields[F.soCombinedQty]);
+    if (!Number.isFinite(combinedQty) || combinedQty <= 0) return;
+
+    const itemId = firstId_(o.fields[F.soItem]);
+    const item = itemId ? orderItemsById[itemId] : null;
+    const itemName = item ? String(item.fields[F.itemName] || "(Unnamed)").replace(/[\r\n]+/g, " ").trim() : "(Unknown Item)";
+    const unit = item ? cellToText_(item.fields[F.itemUnit]) : "";
+    const supplier = String(o.fields[F.soSupplierStatic] || "").trim();
+    const onHand = num_(o.fields[F.soOnHand]);
+    const parQty = num_(o.fields[F.soParQty]);
+    const prepUsage = num_(o.fields[F.soPrepUsage]);
+    const shortfall = num_(o.fields[F.soServiceShortfall]);
+
+    const row = { itemName, unit, onHand, parQty, prepUsage, shortfall, combinedQty };
+
+    if (supplier) {
+      if (!supplierMap.has(supplier)) supplierMap.set(supplier, []);
+      supplierMap.get(supplier).push(row);
     } else {
-      body.appendParagraph("Portal or Other").setFontFamily("Avenir");
+      noSupplierRows.push(row);
     }
+  });
 
-    (s.lines || []).forEach((l) => {
-      const bulletText = `${l.itemName} ${formatQtyWithBuffer_(l.qty, l.unit)}`.trim();
-      const bulletPara = appendBullet_(body, bulletText);
-      bulletPara.setFontFamily("Avenir");
+  // ── 5. Fetch latest Prep Run (cached — reused for folder lookup in step 7) ──
+  let cachedLatestRun = null;
+  try { cachedLatestRun = getLatestRunWithData_(); } catch (e) {
+    Logger.log(`WARNING: Could not fetch latest Prep Run — ${e.message}`);
+  }
 
-      const baseQty = `${fmtQty_(l.qty)}${l.unit || ""}`;
-      appendTextWithBoldUnderline_(bulletPara, bulletText, baseQty);
+  // ── 5b. Fetch prep-only items from latest Prep Run's Ingredient Requirements ──
+  //   Items with Bar Stock = false that aren't made in-house
+  const prepOnlyRows = [];
+
+  try {
+    if (cachedLatestRun) {
+      const latestRun = cachedLatestRun;
+      const reqIds = Array.isArray(latestRun.fields[F.runReqsLinkBack])
+        ? latestRun.fields[F.runReqsLinkBack] : [];
+
+      if (reqIds.length) {
+        const reqs = airtableGetByIds_(T.reqs, reqIds, [
+          F.reqItem, F.reqQty, F.reqSupplierNameStatic,
+        ]);
+
+        // Fetch any item IDs we don't already have
+        const missingItemIds = new Set();
+        reqs.forEach(r => {
+          const id = firstId_(r.fields[F.reqItem]);
+          if (id && !orderItemsById[id]) missingItemIds.add(id);
+        });
+
+        if (missingItemIds.size) {
+          const extraItems = airtableGetByIds_(T.items, Array.from(missingItemIds), [
+            F.itemName, F.itemUnit, F.itemType, F.itemBarStock,
+          ]);
+          extraItems.forEach(item => { orderItemsById[item.id] = item; });
+        }
+
+        // Track which item IDs are already in Stock Orders (bar stock items)
+        const barStockItemIds = new Set();
+        orders.forEach(o => {
+          const id = firstId_(o.fields[F.soItem]);
+          if (id) barStockItemIds.add(id);
+        });
+
+        reqs.forEach(r => {
+          const itemId = firstId_(r.fields[F.reqItem]);
+          if (!itemId || barStockItemIds.has(itemId)) return;
+
+          const item = orderItemsById[itemId];
+          if (!item) return;
+
+          // Skip in-house items (Batch, Sub Recipe, Garnish, Other)
+          const itemType = normaliseItemType_(cellToText_(item.fields[F.itemType]));
+          if (
+            itemType === CFG.airtable.itemTypes.batch ||
+            itemType === CFG.airtable.itemTypes.subRecipe ||
+            CFG.airtable.itemTypes.subRecipeVariants.has(itemType) ||
+            CFG.airtable.itemTypes.ingredientPrepOnly.has(itemType)
+          ) return;
+
+          // Skip items flagged as bar stock (they should be in Stock Orders already)
+          if (item.fields[F.itemBarStock] === true) return;
+
+          const qty = num_(r.fields[F.reqQty]);
+          if (!Number.isFinite(qty) || qty <= 0) return;
+
+          const itemName = String(item.fields[F.itemName] || "(Unnamed)").replace(/[\r\n]+/g, " ").trim();
+          const unit = cellToText_(item.fields[F.itemUnit]);
+          const supplier = String(r.fields[F.reqSupplierNameStatic] || "").trim();
+
+          prepOnlyRows.push({ itemName, unit, qty, supplier });
+        });
+      }
+    }
+  } catch (e) {
+    Logger.log(`WARNING: Could not fetch prep-only items — ${e.message}. Continuing without prep-only section.`);
+  }
+
+  Logger.log(`Supplier groups: ${supplierMap.size}, No-supplier rows: ${noSupplierRows.length}, Prep-only rows: ${prepOnlyRows.length}`);
+
+  // ── 6. Compute week ending date for doc title ──
+  const weekEndDate = sessionDate ? computeWeekEndingFromDate_(sessionDate) : "";
+  const docTitle = weekEndDate
+    ? `Ordering Run Sheet — W.E. ${weekEndDate}`
+    : `Ordering Run Sheet — ${sessionName}`;
+
+  // ── 7. Create the document ──
+  const rootFolder = DriveApp.getFolderById(getDocsFolderId_());
+
+  // Place in the same Prep Run folder if one exists for this week
+  let orderFolder = rootFolder;
+  try {
+    if (cachedLatestRun) {
+      const runLabel = formatRunLabel_(cachedLatestRun);
+      const folderName = `Prep Run ${runLabel}`;
+      const existing = rootFolder.getFoldersByName(folderName);
+      if (existing.hasNext()) orderFolder = existing.next();
+    }
+  } catch (e) {
+    Logger.log(`Could not find Prep Run folder — placing in root. ${e.message}`);
+  }
+
+  const templateId = getOptionalProp_(CFG.props.templateOrderingCombined);
+  let doc;
+
+  if (templateId && templateExists_(templateId)) {
+    trashExistingByName_(orderFolder, docTitle);
+    doc = copyTemplate_(templateId, orderFolder, docTitle);
+    replaceAllPlaceholders_(doc, {
+      DATE: sessionDate,
+      RUN_LABEL: sessionName,
+      STAFF_NAME: countedBy,
+    });
+    // Remove {{CONTENT}} marker
+    const contentMarker = "{{CONTENT}}";
+    const sr = doc.getBody().findText(contentMarker);
+    if (sr) {
+      let parent = sr.getElement().getParent();
+      while (parent.getParent() && parent.getParent().getType() !== DocumentApp.ElementType.BODY_SECTION) {
+        parent = parent.getParent();
+      }
+      doc.getBody().removeChild(parent);
+    }
+  } else {
+    trashExistingByName_(orderFolder, docTitle);
+    doc = DocumentApp.create(docTitle);
+    moveToFolder_(doc.getId(), orderFolder);
+    doc.setName(docTitle);
+  }
+
+  const body = doc.getBody();
+  if (!templateId || !templateExists_(templateId)) {
+    body.clearContent();
+    body.appendParagraph(docTitle).setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
+  }
+
+  // Subtitle lines
+  body.appendParagraph(`Counted by: ${countedBy}`).setHeading(DocumentApp.ParagraphHeading.SUBTITLE).setFontFamily("Avenir");
+  body.appendParagraph(`Session: ${sessionName}`).setFontFamily("Avenir");
+
+  // Feedback link
+  appendFeedbackLink_(body, null, docTitle, "Ordering");
+
+  body.appendParagraph("").setFontFamily("Avenir"); // spacer
+
+  // ── 8. Supplier-grouped bar stock orders ──
+  const sortedSuppliers = Array.from(supplierMap.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]));
+
+  sortedSuppliers.forEach(([supplierName, rows]) => {
+    rows.sort((a, b) => a.itemName.localeCompare(b.itemName));
+
+    body.appendParagraph(supplierName).setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
+
+    rows.forEach(r => {
+      const line = `${r.itemName}  |  On Hand: ${fmtQty_(r.onHand)}  |  Par: ${fmtQty_(r.parQty)}  |  Prep: ${fmtQty_(r.prepUsage)}  |  Order: ${fmtQty_(r.combinedQty)}${r.unit || ""}`;
+      const li = appendBullet_(body, line);
+      li.setFontFamily("Avenir");
+
+      // Bold the order quantity
+      const boldText = `Order: ${fmtQty_(r.combinedQty)}${r.unit || ""}`;
+      appendTextWithBoldUnderline_(li, line, boldText);
     });
   });
 
-  // Add unassigned/needs routing items at the END
-  if (needsRouting.length) {
-    body.appendParagraph(""); // Blank line
-    body.appendParagraph("⚠️ NEEDS ASSIGNMENT").setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
-    body.appendParagraph("These items need supplier/staff assignment in Airtable:").setFontFamily("Avenir");
+  // ── 9. Items below par — no supplier assigned ──
+  if (noSupplierRows.length) {
+    noSupplierRows.sort((a, b) => a.itemName.localeCompare(b.itemName));
+    body.appendParagraph("").setFontFamily("Avenir");
+    body.appendParagraph("ITEMS BELOW PAR — NO SUPPLIER").setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
 
-    needsRouting.forEach((r) => {
-      const bulletText = `${r.supplierName}: ${r.itemName} ${formatQtyWithBuffer_(r.qty, r.unit)}`.trim();
-      appendBullet_(body, bulletText).setFontFamily("Avenir");
+    noSupplierRows.forEach(r => {
+      const line = `${r.itemName}  |  On Hand: ${fmtQty_(r.onHand)}  |  Par: ${fmtQty_(r.parQty)}  |  Order: ${fmtQty_(r.combinedQty)}${r.unit || ""}`;
+      const li = appendBullet_(body, line);
+      li.setFontFamily("Avenir");
     });
+  }
+
+  // ── 10. Prep-only items (non-bar-stock from Ingredient Requirements) ──
+  if (prepOnlyRows.length) {
+    prepOnlyRows.sort((a, b) => a.itemName.localeCompare(b.itemName));
+    body.appendParagraph("").setFontFamily("Avenir");
+    body.appendParagraph("PREP-ONLY ITEMS (no bar stock count)").setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
+    body.appendParagraph("These items are needed for prep but are not tracked in bar stock.").setFontFamily("Avenir");
+
+    prepOnlyRows.forEach(r => {
+      const line = `${r.itemName}  |  Prep: ${fmtQty_(r.qty)}${r.unit || ""}  |  Order: ${fmtQty_(r.qty)}${r.unit || ""}` +
+        (r.supplier ? `  |  Supplier: ${r.supplier}` : "");
+      const li = appendBullet_(body, line);
+      li.setFontFamily("Avenir");
+    });
+  }
+
+  // ── 11. Empty state ──
+  if (!supplierMap.size && !noSupplierRows.length && !prepOnlyRows.length) {
+    body.appendParagraph("No ordering lines found.").setFontFamily("Avenir");
   }
 
   doc.saveAndClose();
-  return id;
+
+  const docUrl = docUrl_(doc.getId());
+  Logger.log(`✅ Combined ordering doc created: ${docUrl}`);
+
+  // ── 12. Slack notification to Evan ──
+  if (!SKIP_SLACK) {
+    try {
+      const evWebhook = getSlackWebhook_(CFG.props.slackWaratahTest);
+      const slackText =
+        `*Ordering Run Sheet — ${sessionName}*\n` +
+        `• ${slackLink_(docUrl, docTitle)}\n` +
+        `Counted by: ${countedBy}  |  ${supplierMap.size} suppliers  |  ${prepOnlyRows.length} prep-only items`;
+      postToSlack_(evWebhook, slackText);
+    } catch (e) {
+      Logger.log(`Slack warning (ordering): ${e.message} — continuing without notification.`);
+    }
+  }
+
+  return {
+    docId: doc.getId(),
+    docUrl,
+    docTitle,
+    sessionId: session.id,
+    sessionName,
+    supplierCount: supplierMap.size,
+    barStockOrderCount: orders.length,
+    prepOnlyCount: prepOnlyRows.length,
+  };
+}
+
+/**
+ * Compute "DD/MM/YYYY" week-ending label from a session date string.
+ * Week ends on Sunday (session date is a Monday, so +6 days).
+ */
+function computeWeekEndingFromDate_(dateStr) {
+  try {
+    const d = new Date(dateStr);
+    d.setDate(d.getDate() + 6);
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const yyyy = d.getFullYear();
+    return `${dd}/${mm}/${yyyy}`;
+  } catch (e) {
+    return "";
+  }
 }
 
 /* =========================================================
@@ -2562,15 +2648,6 @@ function normaliseItemType_(t) {
   return s;
 }
 
-function matchStaff_(staffText) {
-  const s = (staffText || "").toLowerCase();
-  if (!s) return null;
-
-  if (CFG.airtable.staffAliases.andie.some((x) => s.includes(x))) return "andie";
-  if (CFG.airtable.staffAliases.blade.some((x) => s.includes(x))) return "blade";
-  return null;
-}
-
 function formatRunLabel_(run) {
   const prepWeek = run.fields[CFG.airtable.fields.runPrepWeek];
   const dt = prepWeek ? new Date(prepWeek) : new Date(run.createdTime);
@@ -2682,4 +2759,90 @@ function safeJson_(obj, maxLen) {
   try { s = JSON.stringify(obj); } catch (e) { s = String(obj); }
   if (!maxLen || s.length <= maxLen) return s;
   return s.slice(0, maxLen - 3) + "...";
+}
+
+/* =========================================================
+ * POLL-BASED ORDERING EXPORT PROCESSOR
+ *
+ * Polls Count Sessions for "Ordering Export State" = "REQUESTED".
+ * When found, generates the Combined Ordering Run Sheet and sets
+ * the state to "COMPLETED" (or "ERROR" on failure).
+ *
+ * Set up a GAS time-driven trigger to run this every 1-2 minutes.
+ * ======================================================= */
+
+function processOrderingExportRequests() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) {
+    Logger.log("Another export is running. Skipping ordering poll.");
+    return;
+  }
+
+  const T = CFG.airtable.tables;
+  const F = CFG.airtable.fields;
+
+  try {
+    const requested = airtableListAll_(T.countSessions, {
+      fields: [F.csStatus, F.csDate, F.csOrderingExportState],
+      filterByFormula: `{${F.csOrderingExportState}}="REQUESTED"`,
+      pageSize: 10,
+    });
+
+    if (!requested.length) {
+      Logger.log("No REQUESTED ordering exports found.");
+      return;
+    }
+
+    // Process the most recent one only
+    requested.sort((a, b) => {
+      const da = a.fields?.[F.csDate] || "";
+      const db = b.fields?.[F.csDate] || "";
+      return db.localeCompare(da);
+    });
+
+    const session = requested[0];
+    const sessionId = session.id;
+    const sessionDate = session.fields?.[F.csDate] || "(unknown)";
+
+    Logger.log(`Processing ordering export for session ${sessionDate} (${sessionId})`);
+
+    let exportSuccess = false;
+    try {
+      // Route Slack to the test channel for ordering notifications
+      SLACK_WEBHOOK_OVERRIDE = getSlackWebhook_(CFG.props.slackWaratahTest);
+
+      const result = exportCombinedOrderingDoc_();
+      exportSuccess = true;
+      Logger.log(`Ordering doc generated for session ${sessionDate}`);
+
+    } catch (err) {
+      const errorMsg = err && err.message ? err.message : String(err);
+      Logger.log(`Ordering export FAILED for session ${sessionDate}: ${errorMsg}`);
+
+    } finally {
+      SLACK_WEBHOOK_OVERRIDE = null;
+    }
+
+    // Update state — try { name: "X" } first, fall back to plain string
+    const newState = exportSuccess ? "COMPLETED" : "ERROR";
+    try {
+      airtablePatch_(T.countSessions, sessionId, {
+        [F.csOrderingExportState]: { name: newState },
+      });
+      Logger.log(`Set Ordering Export State → ${newState}`);
+    } catch (patchErr1) {
+      Logger.log(`Patch with {name} failed: ${patchErr1.message} — trying plain string`);
+      try {
+        airtablePatch_(T.countSessions, sessionId, {
+          [F.csOrderingExportState]: newState,
+        });
+        Logger.log(`Set Ordering Export State → ${newState} (plain string)`);
+      } catch (patchErr2) {
+        Logger.log(`Patch with plain string also failed: ${patchErr2.message} — state not updated`);
+      }
+    }
+
+  } finally {
+    lock.releaseLock();
+  }
 }

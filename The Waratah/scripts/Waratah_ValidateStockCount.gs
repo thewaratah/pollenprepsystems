@@ -2,11 +2,11 @@
  * Waratah_ValidateStockCount.gs
  *
  * Airtable Automation Script — runs INSIDE Airtable (not GAS).
- * Validates a completed stock count session: checks for missing quantities,
+ * Validates a completed stock count session: auto-fills blank quantities to 0,
  * flags outliers vs previous counts, and updates session status.
  *
- * Trigger: Andie clicks "Validate" button after counting
- * Inputs:  sessionId (string, record ID), dryRun (boolean)
+ * Trigger: Automation on Count Session Status change to "Completed"
+ * Inputs:  sessionId (string, auto-detects latest "Completed" session if omitted), dryRun (boolean, defaults false)
  */
 
 // ── INPUT ──────────────────────────────────────────────────────────
@@ -195,15 +195,14 @@ const main = async () => {
       throw new Error(`Session not found: ${sessionIdInput}`);
     }
   } else {
-    // Auto-detect: find most recent Draft or In Progress session
+    // Auto-detect: find most recent Completed session (Evan marked it done after counting)
     const candidates = sessionsQuery.records.filter(r => {
       const status = r.getCellValue(CONFIG.sessionStatusField);
-      const statusName = status?.name || "";
-      return statusName === "Draft" || statusName === "In Progress" || statusName === "";
+      return status?.name === "Completed";
     });
 
     if (candidates.length === 0) {
-      throw new Error("No open session found. Run Init Stock Count first.");
+      throw new Error("No session with status 'Completed' found. Mark the Count Session as Completed after counting.");
     }
 
     candidates.sort((a, b) => {
@@ -262,13 +261,13 @@ const main = async () => {
   // ── Phase 4: Validate counts ──
   console.log("Phase 4: Validating counts...");
 
-  const missingQty = [];    // Records with null/undefined quantity
-  const outliers = [];       // Records with suspicious counts
-  const negativeQty = [];    // Records with negative quantities
+  const autoFilledZero = [];  // Records with null quantity → auto-filled to 0
+  const outliers = [];        // Records with suspicious counts
+  const negativeQty = [];     // Records with negative quantities
   let validCount = 0;
 
   for (const rec of sessionCounts) {
-    const qty = rec.getCellValue(CONFIG.countQuantityField);
+    let qty = rec.getCellValue(CONFIG.countQuantityField);
     const prevQty = rec.getCellValue(CONFIG.countPreviousField);
     const itemRef = rec.getCellValue(CONFIG.countItemField);
     const locRef = rec.getCellValue(CONFIG.countLocationField);
@@ -276,8 +275,9 @@ const main = async () => {
     const locName = locRef && locRef[0] ? locRef[0].name || "(Unknown)" : "(No location)";
 
     if (qty == null) {
-      missingQty.push({ id: rec.id, itemName, locName });
-      continue;
+      // Treat blank as 0 — item not in stock at this location
+      qty = 0;
+      autoFilledZero.push({ id: rec.id, itemName, locName });
     }
 
     if (qty < 0) {
@@ -312,18 +312,18 @@ const main = async () => {
   }
 
   console.log(`  Valid: ${validCount}`);
-  console.log(`  Missing quantity: ${missingQty.length}`);
+  console.log(`  Auto-filled to 0: ${autoFilledZero.length}`);
   console.log(`  Negative quantity: ${negativeQty.length}`);
   console.log(`  Outliers flagged: ${outliers.length}`);
 
-  if (missingQty.length > 0) {
+  if (autoFilledZero.length > 0) {
     console.log("");
-    console.log("  Missing quantities:");
-    for (const m of missingQty.slice(0, CONFIG.maxIssuesToShow)) {
+    console.log("  Auto-filled blanks → 0:");
+    for (const m of autoFilledZero.slice(0, CONFIG.maxIssuesToShow)) {
       console.log(`    - ${m.itemName} @ ${m.locName}`);
     }
-    if (missingQty.length > CONFIG.maxIssuesToShow) {
-      console.log(`    ... and ${missingQty.length - CONFIG.maxIssuesToShow} more`);
+    if (autoFilledZero.length > CONFIG.maxIssuesToShow) {
+      console.log(`    ... and ${autoFilledZero.length - CONFIG.maxIssuesToShow} more`);
     }
   }
 
@@ -344,6 +344,17 @@ const main = async () => {
     if (outliers.length > CONFIG.maxIssuesToShow) {
       console.log(`    ... and ${outliers.length - CONFIG.maxIssuesToShow} more`);
     }
+  }
+  console.log("");
+
+  // ── Phase 4b: Auto-fill null quantities to 0 ──
+  if (autoFilledZero.length > 0 && !dryRun) {
+    const zeroUpdates = autoFilledZero.map(r => ({
+      id: r.id,
+      fields: { [CONFIG.countQuantityField]: 0 },
+    }));
+    await batchUpdate_(countsTable, zeroUpdates);
+    console.log(`  Wrote 0 to ${zeroUpdates.length} blank records`);
   }
   console.log("");
 
@@ -382,7 +393,6 @@ const main = async () => {
   console.log("Phase 6: Determining validation result...");
 
   const hasBlockers = negativeQty.length > 0;
-  const hasMissing = missingQty.length > 0;
   const hasOutliers = outliers.length > 0;
 
   let newStatus;
@@ -392,10 +402,6 @@ const main = async () => {
     newStatus = "Needs Review";
     auditStatus = "WARNING";
     console.log("  Result: NEEDS REVIEW (negative quantities found)");
-  } else if (hasMissing) {
-    newStatus = "In Progress";
-    auditStatus = "WARNING";
-    console.log(`  Result: IN PROGRESS (${missingQty.length} items still uncounted)`);
   } else if (hasOutliers) {
     newStatus = "Needs Review";
     auditStatus = "WARNING";
@@ -422,7 +428,7 @@ const main = async () => {
     if (notesField) {
       const noteLines = [
         `Validated: ${formatSydneyTimestamp_(new Date())}`,
-        `Valid: ${validCount}, Missing: ${missingQty.length}, Negative: ${negativeQty.length}, Outliers: ${outliers.length}`,
+        `Valid: ${validCount}, Auto-filled: ${autoFilledZero.length}, Negative: ${negativeQty.length}, Outliers: ${outliers.length}`,
       ];
       if (outliers.length > 0) {
         noteLines.push("");
@@ -452,7 +458,7 @@ const main = async () => {
   console.log(`Result: ${newStatus}`);
   console.log(`Total Records: ${sessionCounts.length}`);
   console.log(`Valid: ${validCount}`);
-  console.log(`Missing: ${missingQty.length}`);
+  console.log(`Auto-filled (blank→0): ${autoFilledZero.length}`);
   console.log(`Negative: ${negativeQty.length}`);
   console.log(`Outliers: ${outliers.length}`);
   console.log(`Execution Time: ${executionTime}s`);
@@ -463,13 +469,13 @@ const main = async () => {
     await writeAuditLog_(auditLogTable, {
       scriptName: CONFIG.scriptName,
       status: auditStatus,
-      message: `Validation ${newStatus}: ${validCount} valid, ${missingQty.length} missing, ${outliers.length} outliers`,
+      message: `Validation ${newStatus}: ${validCount} valid, ${autoFilledZero.length} auto-filled to 0, ${outliers.length} outliers`,
       details: [
         `Session Date: ${sessionDate}`,
         `Result: ${newStatus}`,
         `Total: ${sessionCounts.length}`,
         `Valid: ${validCount}`,
-        `Missing: ${missingQty.length}`,
+        `Auto-filled (blank→0): ${autoFilledZero.length}`,
         `Negative: ${negativeQty.length}`,
         `Outliers: ${outliers.length}`,
         `Flags Updated: ${countUpdates.length}`,
@@ -483,7 +489,7 @@ const main = async () => {
   // Output for Airtable interface
   output.set("status", newStatus.toLowerCase().replace(/ /g, "_"));
   output.set("validCount", validCount);
-  output.set("missingCount", missingQty.length);
+  output.set("autoFilledCount", autoFilledZero.length);
   output.set("outlierCount", outliers.length);
   output.set("negativeCount", negativeQty.length);
   output.set("executionTime", executionTime);
