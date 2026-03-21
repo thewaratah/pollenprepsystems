@@ -290,6 +290,8 @@ const main = async () => {
       });
       console.log('  Session status -> "Completed"');
       console.log("  ValidateStockCount automation will trigger automatically.");
+    } else {
+      throw new Error(`Cannot update Status field: field ${sField ? "is type " + sField.type : "not found"}. Expected singleSelect.`);
     }
   } else {
     console.log('  [DRY RUN] Would set status to "Completed"');
