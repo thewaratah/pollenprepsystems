@@ -63,6 +63,7 @@ const CONFIG = {
   sessionCountedByField: "Counted By",
   sessionStockCountsField: "Stock Counts",
   sessionStockOrdersField: "Stock Orders",
+  sessionOrderingExportStateField: "Ordering Export State",
 
   // Stock Counts fields
   countItemField: "Item",
@@ -541,7 +542,7 @@ const main = async () => {
   }
   console.log("");
 
-  // ── Phase 10: Update session status ──
+  // ── Phase 10: Update session status + trigger ordering export ──
   console.log("Phase 10: Updating session status...");
 
   if (!dryRun) {
@@ -551,10 +552,17 @@ const main = async () => {
       sessionUpdateFields[CONFIG.sessionStatusField] = { name: "Orders Generated" };
     }
 
+    // Auto-trigger ordering doc export — sets flag for GAS polling
+    const exportField = safeField_(sessionsTable, CONFIG.sessionOrderingExportStateField);
+    if (exportField && exportField.type === "singleSelect") {
+      sessionUpdateFields[CONFIG.sessionOrderingExportStateField] = { name: "REQUESTED" };
+    }
+
     await sessionsTable.updateRecordAsync(targetSession.id, sessionUpdateFields);
     console.log('  Session status -> "Orders Generated"');
+    console.log('  Ordering Export State -> "REQUESTED" (GAS will generate doc within 1-2 min)');
   } else {
-    console.log('  [DRY RUN] Would set status to "Orders Generated"');
+    console.log('  [DRY RUN] Would set status to "Orders Generated" + Ordering Export State to "REQUESTED"');
   }
   console.log("");
 

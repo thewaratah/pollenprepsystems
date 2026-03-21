@@ -36,7 +36,7 @@ The Waratah PREP system uses a two-script architecture:
 - `Waratah_GeneratePrepSheet_TimeBasedPolling.gs` - Mark exports as REQUESTED
 - `Waratah_InitStockCount.gs` - Initialize stock count session (create Count Session record + one Stock Count placeholder per Core Order item)
 - `Waratah_ValidateStockCount.gs` - Validate stock count data before finalisation
-- `Waratah_GenerateStockOrders.gs` - Generate stock orders from stocktake (writes to Stock Orders table; idempotent — deletes existing orders before regenerating)
+- `Waratah_GenerateStockOrders.gs` - Generate stock orders from stocktake (writes to Stock Orders table; idempotent — deletes existing orders before regenerating; auto-sets Ordering Export State = REQUESTED to trigger doc export)
 - `Waratah_CompleteStockCount.gs` - Button-triggered: advances "In Progress" session to "Completed" (pre-flight checks all items have tallies; triggers ValidateStockCount automation)
 - `Waratah_ExportOrderingDoc.gs` - Trigger ordering doc export via GAS polling (sets "Ordering Export State" = REQUESTED on Count Sessions)
 
@@ -80,8 +80,8 @@ The Waratah PREP system uses a two-script architecture:
 2. Evan walks each area, enters counts in the corresponding tally column (all ~59 items visible in one sorted list)
 3. `Waratah_CompleteStockCount.gs` → Button-triggered: pre-flight checks all items have tallies, advances status to "Completed"
 4. `Waratah_ValidateStockCount.gs` → Flags uncounted items and outliers, sets status to "Validated" or "Needs Review"
-5. `Waratah_GenerateStockOrders.gs` → Aggregates counts, looks up par levels + prep usage, creates Stock Order records
-6. `Waratah_ExportOrderingDoc.gs` → Triggers ordering doc export via GAS polling
+5. `Waratah_GenerateStockOrders.gs` → Aggregates counts, looks up par levels + prep usage, creates Stock Order records, auto-sets `Ordering Export State = REQUESTED`
+6. `GoogleDocsPrepSystem.gs` GAS polling → Picks up REQUESTED, generates Combined Ordering Run Sheet, sends Slack notification, sets COMPLETED
 
 **Ordering formula per item:**
 ```
@@ -236,6 +236,23 @@ RECIPE_SCALER_URL=<DEPLOYED_WEB_APP_URL>
 ---
 
 ## Recent Changes
+
+### 2026-03-21 — Auto-Export: GenerateStockOrders Now Triggers Ordering Doc
+
+**`Waratah_GenerateStockOrders.gs` — Auto-triggers ordering doc export:**
+- Phase 10 now sets `Ordering Export State = REQUESTED` alongside `Status = Orders Generated` in a single update
+- Eliminates the need to manually press the "Export Ordering Doc" button after order generation
+- GAS polling (`processOrderingExportRequests()`) picks up REQUESTED and generates the doc within 1-2 minutes
+- `Waratah_ExportOrderingDoc.gs` remains available as a manual re-trigger if needed (e.g., after clearing COMPLETED state)
+
+**Full one-button pipeline now:**
+```
+[Complete Stock Count] → Completed → [auto] ValidateStockCount → Validated
+→ [auto] GenerateStockOrders → Orders Generated + REQUESTED
+→ [GAS polls] → Doc generated + Slack notification
+```
+
+---
 
 ### 2026-03-21 — CompleteStockCount Button Script
 
