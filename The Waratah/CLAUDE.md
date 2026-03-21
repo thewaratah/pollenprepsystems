@@ -38,6 +38,8 @@ The Waratah PREP system uses a two-script architecture:
 - `Waratah_FinaliseCount.gs` - Validate stocktake
 - `Waratah_GeneratePrepRun.gs` - Generate prep tasks
 - `Waratah_GeneratePrepSheet_TimeBasedPolling.gs` - Mark exports as REQUESTED
+- `Waratah_InitStockCount.gs` - Initialize stock count session (create Count Session record + placeholder Weekly Counts)
+- `Waratah_ValidateStockCount.gs` - Validate stock count data before finalisation
 - `Waratah_GenerateStockOrders.gs` - Generate stock orders from stocktake (writes to Stock Orders table; idempotent — deletes existing orders before regenerating)
 - `Waratah_ExportOrderingDoc.gs` - Trigger ordering doc export via GAS polling (sets "Ordering Export State" = REQUESTED on Count Sessions)
 
@@ -111,6 +113,8 @@ All Waratah scripts use the `Waratah_` prefix to differentiate from Sakura House
 | Finalize stocktake | `Waratah_FinaliseCount.gs` | Airtable |
 | Generate prep run | `Waratah_GeneratePrepRun.gs` | Airtable |
 | Mark for export | `Waratah_GeneratePrepSheet_TimeBasedPolling.gs` | Airtable |
+| Initialize stock count | `Waratah_InitStockCount.gs` | Airtable |
+| Validate stock count | `Waratah_ValidateStockCount.gs` | Airtable |
 | Generate stock orders | `Waratah_GenerateStockOrders.gs` | Airtable |
 | Trigger ordering export | `Waratah_ExportOrderingDoc.gs` | Airtable |
 | Export to docs | `GoogleDocsPrepSystem.gs` | Google Apps Script |
@@ -126,12 +130,12 @@ All Waratah scripts use the `Waratah_` prefix to differentiate from Sakura House
 Set in: Google Apps Script Editor → Project Settings → Script Properties
 
 ```bash
-# Airtable
-WARATAH_AIRTABLE_BASE_ID=appfcy14ZikhKZnRS
+# Airtable (used by GoogleDocsPrepSystem.gs, RecipeScaler.gs, FeedbackForm.gs)
+AIRTABLE_BASE_ID=appfcy14ZikhKZnRS
 AIRTABLE_PAT=<stored in GAS Script Properties>
 
 # Google Drive
-WARATAH_DOCS_FOLDER_ID=1Zekjhk78dwH5MNoHXnvu1zI4VtbZNckx
+DOCS_FOLDER_ID=1Zekjhk78dwH5MNoHXnvu1zI4VtbZNckx
 WARATAH_TEMPLATES_FOLDER_ID=1f4InQCmccjUSnpEqJzz1VnrtSfmweElU
 WARATAH_ARCHIVE_FOLDER_ID=<TO_BE_CONFIGURED>
 
@@ -141,17 +145,18 @@ WARATAH_TEMPLATE_INGREDIENT_PREP_ID=<google-doc-id>
 WARATAH_TEMPLATE_ORDERING_ID=<google-doc-id>       # Combined ordering doc template (replaces per-staff Andie/Blade templates)
 
 # Slack Webhooks
-SLACK_WEBHOOK_WARATAH_PREP=<WEBHOOK_URL>   # Required by FeedbackForm.gs for production feedback posts; falls back to SLACK_WEBHOOK_EV_TEST if absent
+SLACK_WEBHOOK_PREP=<WEBHOOK_URL>             # Used by GoogleDocsPrepSystem.gs for Monday AM prep doc notifications
+SLACK_WEBHOOK_WARATAH_PREP=<WEBHOOK_URL>     # Used by FeedbackForm.gs for production feedback posts; falls back to SLACK_WEBHOOK_EV_TEST if absent
 SLACK_WEBHOOK_WARATAH_TEST=<WEBHOOK_URL>
-SLACK_WEBHOOK_EV_TEST=<WEBHOOK_URL>        # Dev fallback for FeedbackForm.gs + combined ordering doc notifications
+SLACK_WEBHOOK_EV_TEST=<WEBHOOK_URL>          # Dev fallback for FeedbackForm.gs + combined ordering doc notifications
 
 # Security
 MANUAL_TRIGGER_SECRET=<GENERATE_RANDOM_SECRET>
 RECIPE_SYNC_SECRET=<stored in GAS Script Properties>
 
 # Web Apps (set after deployment)
-WARATAH_FEEDBACK_FORM_URL=<DEPLOYED_WEB_APP_URL>
-WARATAH_RECIPE_SCALER_URL=<DEPLOYED_WEB_APP_URL>
+FEEDBACK_FORM_URL=<DEPLOYED_WEB_APP_URL>
+RECIPE_SCALER_URL=<DEPLOYED_WEB_APP_URL>
 ```
 
 ### Knowledge Platform Environment (.env.local)
@@ -223,6 +228,27 @@ AIRTABLE_PAT=<see .env.local>
 ---
 
 ## Recent Changes
+
+### 2026-03-21 — Documentation Sync: Stock Ordering Scripts + Script Properties Fix
+
+**`CLAUDE.md` — Script Architecture section updated:**
+- Added `Waratah_InitStockCount.gs` and `Waratah_ValidateStockCount.gs` to Airtable Automation Scripts list and Script Naming Convention table
+- Added both scripts to `clasp status` verification checklist
+- Updated sync-to-Drive description: "4 Airtable-only scripts" corrected to "7"
+
+**`CLAUDE.md` — Script Properties section corrected (P1 accuracy fix):**
+- `WARATAH_AIRTABLE_BASE_ID` corrected to `AIRTABLE_BASE_ID` (matches GAS code)
+- `WARATAH_DOCS_FOLDER_ID` corrected to `DOCS_FOLDER_ID` (matches GAS code)
+- `WARATAH_FEEDBACK_FORM_URL` corrected to `FEEDBACK_FORM_URL` (matches GAS code)
+- `WARATAH_RECIPE_SCALER_URL` corrected to `RECIPE_SCALER_URL` (matches GAS code)
+- Added `SLACK_WEBHOOK_PREP` (used by GoogleDocsPrepSystem.gs for Monday AM notifications; was undocumented)
+- Clarified which script uses each Slack webhook property
+
+**Key note for future sessions:**
+- `sync-airtable-scripts-to-drive.sh` is missing `Waratah_ExportOrderingDoc.gs` from its AIRTABLE_SCRIPTS array — flag for next code session
+- Stock ordering plan at `The Waratah/plans/stock-count-ordering-plan.md` — reference document, not a CLAUDE.md section
+
+---
 
 ### 2026-03-16 — Stock Ordering Scripts & Ordering Export Polling
 
@@ -650,6 +676,8 @@ clasp status
 # - Waratah_FinaliseCount.gs
 # - Waratah_GeneratePrepRun.gs
 # - Waratah_GeneratePrepSheet_TimeBasedPolling.gs
+# - Waratah_InitStockCount.gs
+# - Waratah_ValidateStockCount.gs
 # - Waratah_GenerateStockOrders.gs
 # - Waratah_ExportOrderingDoc.gs
 ```
@@ -665,7 +693,7 @@ cd "The Waratah/scripts"
 bash sync-airtable-scripts-to-drive.sh
 ```
 
-This uploads the 4 Airtable-only scripts + `GoogleDocsPrepSystem.gs` as .txt files + a README to the [Script Backups](https://drive.google.com/drive/folders/1FN-IyBCXj1r_zDNunpZzR-8u8DRSSiSp) Drive folder. Uses the clasp OAuth token for authentication.
+This uploads the 7 Airtable-only scripts + `GoogleDocsPrepSystem.gs` as .txt files + a README to the [Script Backups](https://drive.google.com/drive/folders/1FN-IyBCXj1r_zDNunpZzR-8u8DRSSiSp) Drive folder. Uses the clasp OAuth token for authentication.
 
 **This must be run after every change to Waratah scripts** — it is part of the deployment checklist.
 
@@ -693,4 +721,4 @@ python3 rag-ingest-waratah.py
 
 ---
 
-*Last Updated: 2026-03-16*
+*Last Updated: 2026-03-21*

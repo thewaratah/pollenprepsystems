@@ -37,5 +37,8 @@ Thumbs.db
 **/SakuraHouseVisualAssets/
 **/WaratahVisualAssets/
 
+# Generated docx files (intermediary for Google Drive upload)
+**/docs/docx files/
+
 # Archives
 docs/archive/

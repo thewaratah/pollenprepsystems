@@ -34,9 +34,12 @@ Sakura House/
 │   ├── AIRTABLE_SCHEMA.md           # Complete Airtable base schema reference
 │   ├── STAFF_GUIDE.md               # Quick start for staff (stocktake workflow)
 │   ├── MANAGER_GUIDE.md             # Manager guide (config, troubleshooting)
+│   ├── NEW_STARTER_WELCOME.md       # New starter onboarding guide
+│   ├── TROUBLESHOOTING.md           # Staff/manager troubleshooting reference
 │   ├── TECHNICAL_REFERENCE.md       # Developer reference (script internals)
-│   ├── plans/
-│   │   └── 2026-02-20-negligible-stock-decrements-design.md
+│   ├── deploy-docs-to-drive.js      # Auto-sync staff docs to Google Drive
+│   ├── package.json                 # Dependencies for deploy-docs-to-drive
+│   ├── docx files/                  # Generated .docx intermediaries (gitignored)
 │   └── solutions/patterns/
 │       ├── common-solutions.md      # Searchable solution library
 │       └── critical-patterns.md     # Required reading for devs
@@ -226,6 +229,17 @@ clasp status           # Verify what gets pushed
 - `ClearWeeklyCount.gs`, `ClearPrepData.gs`, `FinaliseCount.gs`
 - `GeneratePrepRun.gs`, `GeneratePrepSheet.gs`
 - `GoogleDocsPrepSystem_TestHarness.gs`
+
+### Deploy Staff Docs to Google Drive
+
+Run after every Sakura deployment to sync staff/manager markdown docs as Google Docs:
+
+```bash
+cd "Sakura House/docs"
+node deploy-docs-to-drive.js
+```
+
+Converts `STAFF_GUIDE.md`, `MANAGER_GUIDE.md`, `NEW_STARTER_WELCOME.md`, `TROUBLESHOOTING.md` to `.docx` and uploads/overwrites them in the shared Google Drive folder. Uses service account `claude-sheets-access@quick-asset-465310-h5.iam.gserviceaccount.com`.
 
 ---
 

@@ -2,8 +2,8 @@
  * Waratah_InitStockCount.gs
  *
  * Airtable Automation Script — runs INSIDE Airtable (not GAS).
- * Creates a new Count Session and Stock Count placeholder records
- * for every active Core Order item, at the Storage Locations linked on each item.
+ * Creates a new Count Session and one Stock Count placeholder record
+ * per active Core Order item (no location breakdown — one record per item).
  * Archives sessions older than 4 weeks.
  *
  * Trigger: Manual button or scheduled automation (Monday AM)
@@ -30,7 +30,6 @@ const CONFIG = {
 
   // Tables
   itemsTableName: "Items",
-  storageLocationsTableName: "Storage Locations",
   countSessionsTableName: "Count Sessions",
   stockCountsTableName: "Stock Counts",
   stockOrdersTableName: "Stock Orders",
@@ -40,14 +39,8 @@ const CONFIG = {
   itemNameField: "Item Name",
   itemBarStockField: "Bar Stock",
   itemCoreOrderField: "Core Order",
-  itemStorageLocationsField: "Storage Locations",
   itemActiveField: "Active",
   itemTypeField: "Item Type",
-
-  // Storage Locations fields
-  locationNameField: "Location Name",
-  locationSortOrderField: "Sort Order",
-  locationActiveField: "Active",
 
   // Count Sessions fields
   sessionDateField: "Session Date",
@@ -58,7 +51,6 @@ const CONFIG = {
 
   // Stock Counts fields
   countItemField: "Item",
-  countLocationField: "Location",
   countSessionField: "Count Session",
   countQuantityField: "Quantity",
   countPreviousField: "Previous Count",
@@ -201,7 +193,6 @@ const main = async () => {
   console.log("Phase 1: Loading tables...");
 
   const itemsTable = base.getTable(CONFIG.itemsTableName);
-  const locationsTable = base.getTable(CONFIG.storageLocationsTableName);
   const sessionsTable = base.getTable(CONFIG.countSessionsTableName);
   const countsTable = base.getTable(CONFIG.stockCountsTableName);
   const auditLogTable = safeGetTable_(CONFIG.auditLogTableName);
@@ -250,7 +241,7 @@ const main = async () => {
   console.log("Phase 3: Fetching Core Order items...");
 
   const itemsQuery = await itemsTable.selectRecordsAsync({
-    fields: [CONFIG.itemNameField, CONFIG.itemCoreOrderField, CONFIG.itemStorageLocationsField, CONFIG.itemBarStockField, CONFIG.itemTypeField, CONFIG.itemActiveField],
+    fields: [CONFIG.itemNameField, CONFIG.itemCoreOrderField, CONFIG.itemBarStockField, CONFIG.itemTypeField, CONFIG.itemActiveField],
   });
 
   const coreOrderItems = itemsQuery.records.filter(r => {
@@ -269,34 +260,8 @@ const main = async () => {
     return;
   }
 
-  // ── Phase 4: Fetch active Storage Locations ──
-  console.log("Phase 4: Fetching storage locations...");
-
-  const locationsQuery = await locationsTable.selectRecordsAsync({
-    fields: [CONFIG.locationNameField, CONFIG.locationSortOrderField, CONFIG.locationActiveField],
-    sorts: [{ field: CONFIG.locationSortOrderField, direction: "asc" }],
-  });
-
-  const activeLocations = locationsQuery.records.filter(r => {
-    return r.getCellValue(CONFIG.locationActiveField) === true;
-  });
-
-  console.log(`  Found ${activeLocations.length} active locations:`);
-  for (const loc of activeLocations) {
-    console.log(`    - ${loc.getCellValue(CONFIG.locationNameField)}`);
-  }
-  console.log("");
-
-  if (activeLocations.length === 0) {
-    const msg = "No active Storage Locations found. Add locations and mark them Active first.";
-    console.log(`  BLOCKED: ${msg}`);
-    output.set("status", "blocked");
-    output.set("message", msg);
-    return;
-  }
-
-  // ── Phase 5: Fetch previous counts for pre-fill ──
-  console.log("Phase 5: Looking up previous counts...");
+  // ── Phase 4: Fetch previous counts for pre-fill ──
+  console.log("Phase 4: Looking up previous counts...");
 
   // Find the most recent completed session
   const allSessions = existingSessions.records.filter(r => {
@@ -304,7 +269,7 @@ const main = async () => {
     return status?.name === "Orders Generated" || status?.name === "Completed" || status?.name === "Validated";
   });
 
-  // key: "itemId|locationId" -> qty for that specific item+location
+  // key: itemId -> qty (one record per item, no location breakdown)
   let previousCountMap = new Map();
 
   if (allSessions.length > 0) {
@@ -323,29 +288,30 @@ const main = async () => {
     const linkedCounts = lastSession.getCellValue(CONFIG.sessionStockCountsField);
     if (linkedCounts && linkedCounts.length > 0) {
       const prevCountsQuery = await countsTable.selectRecordsAsync({
-        fields: [CONFIG.countItemField, CONFIG.countLocationField, CONFIG.countQuantityField],
+        fields: [CONFIG.countItemField, CONFIG.countQuantityField],
       });
 
       const linkedIds = new Set(linkedCounts.map(l => l.id));
       for (const rec of prevCountsQuery.records) {
         if (!linkedIds.has(rec.id)) continue;
         const item = rec.getCellValue(CONFIG.countItemField);
-        const loc = rec.getCellValue(CONFIG.countLocationField);
         const qty = rec.getCellValue(CONFIG.countQuantityField);
-        if (item && item.length > 0 && loc && loc.length > 0 && qty != null) {
-          const key = `${item[0].id}|${loc[0].id}`;
-          previousCountMap.set(key, qty);
+        if (item && item.length > 0 && qty != null) {
+          const itemId = item[0].id;
+          // Sum across any old location-based records from previous sessions
+          const existing = previousCountMap.get(itemId) || 0;
+          previousCountMap.set(itemId, existing + qty);
         }
       }
-      console.log(`  Loaded ${previousCountMap.size} previous per-location counts`);
+      console.log(`  Loaded ${previousCountMap.size} previous counts`);
     }
   } else {
     console.log("  No previous completed session found (first run)");
   }
   console.log("");
 
-  // ── Phase 6: Create Count Session ──
-  console.log("Phase 6: Creating Count Session...");
+  // ── Phase 5: Create Count Session ──
+  console.log("Phase 5: Creating Count Session...");
 
   const sessionDate = new Date();
   const sessionFields = {
@@ -373,54 +339,36 @@ const main = async () => {
   }
   console.log("");
 
-  // ── Phase 7: Create Stock Count placeholders (item → linked locations) ──
-  console.log("Phase 7: Creating Stock Count placeholders...");
+  // ── Phase 6: Create Stock Count placeholders (one per item, no location) ──
+  console.log("Phase 6: Creating Stock Count placeholders...");
 
-  const activeLocationIds = new Set(activeLocations.map(l => l.id));
   const placeholders = [];
   const prevCountField = safeField_(countsTable, CONFIG.countPreviousField);
-  let skippedNoLocations = 0;
 
   for (const item of coreOrderItems) {
     const itemId = item.id;
-    const linkedLocations = item.getCellValue(CONFIG.itemStorageLocationsField);
 
-    if (!linkedLocations || linkedLocations.length === 0) {
-      const itemName = item.getCellValue(CONFIG.itemNameField);
-      const displayName = Array.isArray(itemName) ? itemName.map(l => l.name || l.id).join(", ") : itemName || itemId;
-      console.log(`  WARNING: "${displayName}" has no Storage Locations linked — skipping`);
-      skippedNoLocations++;
-      continue;
+    const fields = {
+      [CONFIG.countItemField]: [{ id: itemId }],
+    };
+
+    if (sessionRecordId) {
+      fields[CONFIG.countSessionField] = [{ id: sessionRecordId }];
     }
 
-    for (const loc of linkedLocations) {
-      // Only create placeholders for active locations
-      if (!activeLocationIds.has(loc.id)) continue;
-
-      const fields = {
-        [CONFIG.countItemField]: [{ id: itemId }],
-        [CONFIG.countLocationField]: [{ id: loc.id }],
-      };
-
-      if (sessionRecordId) {
-        fields[CONFIG.countSessionField] = [{ id: sessionRecordId }];
+    // Pre-fill previous count for this item
+    if (prevCountField) {
+      const prevQty = previousCountMap.get(itemId);
+      if (prevQty != null) {
+        fields[CONFIG.countPreviousField] = prevQty;
       }
-
-      // Pre-fill previous count for this specific item+location
-      if (prevCountField) {
-        const key = `${itemId}|${loc.id}`;
-        const prevQty = previousCountMap.get(key);
-        if (prevQty != null) {
-          fields[CONFIG.countPreviousField] = prevQty;
-        }
-      }
-
-      placeholders.push({ fields });
     }
+
+    placeholders.push({ fields });
   }
 
   const totalPlaceholders = placeholders.length;
-  console.log(`  ${coreOrderItems.length} items → ${totalPlaceholders} placeholders (${skippedNoLocations} items skipped — no locations linked)`);
+  console.log(`  ${coreOrderItems.length} Core Order items → ${totalPlaceholders} placeholders`);
 
   if (!dryRun) {
     const createdIds = await batchCreate_(countsTable, placeholders);
@@ -441,8 +389,8 @@ const main = async () => {
   }
   console.log("");
 
-  // ── Phase 8: Archive old sessions ──
-  console.log("Phase 8: Archiving old sessions...");
+  // ── Phase 7: Archive old sessions ──
+  console.log("Phase 7: Archiving old sessions...");
 
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - (CONFIG.archiveWeeks * 7));
@@ -499,7 +447,7 @@ const main = async () => {
   }
   console.log("");
 
-  // ── Phase 9: Summary ──
+  // ── Phase 8: Summary ──
   const endTime = Date.now();
   const executionTime = ((endTime - startTime) / 1000).toFixed(2);
 
@@ -509,26 +457,23 @@ const main = async () => {
   console.log(`Session Date: ${formatSydneyTimestamp_(sessionDate)}`);
   console.log(`Counted By: ${countedByInput}`);
   console.log(`Core Order Items: ${coreOrderItems.length}`);
-  console.log(`Locations: ${activeLocations.length}`);
   console.log(`Placeholders Created: ${totalPlaceholders}`);
-  console.log(`Items Skipped (no locations): ${skippedNoLocations}`);
   console.log(`Previous Counts Loaded: ${previousCountMap.size}`);
   console.log(`Archived Sessions: ${archivedSessions}`);
   console.log(`Execution Time: ${executionTime}s`);
   console.log(`Mode: ${dryRun ? "DRY RUN" : "LIVE"}`);
   console.log("");
 
-  // ── Phase 10: Audit Log ──
+  // ── Phase 9: Audit Log ──
   if (!dryRun && auditLogTable) {
     await writeAuditLog_(auditLogTable, {
       scriptName: CONFIG.scriptName,
       status: "SUCCESS",
-      message: `Created session with ${totalPlaceholders} stock count placeholders from ${coreOrderItems.length} Core Order items (${skippedNoLocations} skipped — no locations)`,
+      message: `Created session with ${totalPlaceholders} stock count placeholders from ${coreOrderItems.length} Core Order items`,
       details: [
         `Session Date: ${formatSydneyTimestamp_(sessionDate)}`,
         `Counted By: ${countedByInput}`,
         `Core Order Items: ${coreOrderItems.length}`,
-        `Locations: ${activeLocations.length}`,
         `Placeholders: ${totalPlaceholders}`,
         `Previous Counts Loaded: ${previousCountMap.size}`,
         `Archived: ${archivedSessions} sessions, ${archivedCounts} counts`,
@@ -544,7 +489,6 @@ const main = async () => {
   output.set("sessionId", sessionRecordId || "(dry run)");
   output.set("itemCount", coreOrderItems.length);
   output.set("placeholderCount", totalPlaceholders);
-  output.set("skippedNoLocations", skippedNoLocations);
   output.set("archivedSessions", archivedSessions);
   output.set("executionTime", executionTime);
 };
