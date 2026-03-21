@@ -233,7 +233,7 @@ const main = async () => {
   console.log("Phase 2: Finding validated session...");
 
   const sessionsQuery = await sessionsTable.selectRecordsAsync({
-    fields: [CONFIG.sessionDateField, CONFIG.sessionStatusField, CONFIG.sessionCountedByField, CONFIG.sessionStockCountsField],
+    fields: [CONFIG.sessionDateField, CONFIG.sessionStatusField, CONFIG.sessionCountedByField, CONFIG.sessionStockCountsField, CONFIG.sessionStockOrdersField],
   });
 
   let targetSession = null;
