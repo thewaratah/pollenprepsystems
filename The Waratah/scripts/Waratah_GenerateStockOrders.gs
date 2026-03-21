@@ -66,7 +66,7 @@ const CONFIG = {
 
   // Stock Counts fields
   countItemField: "Item",
-  countQuantityField: "Quantity",
+  countQuantityField: "Total On Hand",
 
   // Stock Orders fields
   orderNameField: "Name",

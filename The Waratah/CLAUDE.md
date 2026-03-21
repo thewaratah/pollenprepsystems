@@ -60,14 +60,23 @@ The Waratah PREP system uses a two-script architecture:
 
 **Scope:** Items with `Core Order = true` on the Items table (~59 items). This is a subset of `Bar Stock = true` (~414 items). `Core Order` is the canonical filter for counting scope.
 
-**Architecture:** One Stock Count record per item per Count Session — **no location dimension**. Location info lives on Items as a multi-select (`Location` field, 12 physical locations) and is used only for Airtable view grouping to guide Evan's walk.
+**Architecture:** One Stock Count record per item per Count Session. Each record has **5 area tally fields** (number) + a **`Total On Hand` formula** that sums them. Evan enters per-area counts directly; the formula calculates the total.
 
-**12 Physical Locations** (Items `Location` multi-select):
-Banquettes, Under PB Station, Under TB Station, PB Backbar, TB Backbar, Cool Room, Keg Room, Freezer, PB Fridge, TB Fridge, Hallway, B1
+**5 Counting Areas** (tally columns on Stock Counts):
+
+| Column | Physical Locations Covered |
+|--------|---------------------------|
+| `Public Bar` | Under PB Station, PB Backbar, PB Fridge |
+| `Terrace Bar` | Under TB Station, TB Backbar, TB Fridge |
+| `Banquettes` | Banquettes, Freezer |
+| `Cool Rooms` | Hallway, Keg Room, Cool Room |
+| `Back Storage` | B1 |
+
+**`Total On Hand` formula:** Returns BLANK() when all tallies are empty (distinguishes "not counted" from "counted, total is 0"). Scripts read this field instead of the legacy `Quantity` field.
 
 **Stock Count Pipeline:**
 1. `Waratah_InitStockCount.gs` → Creates Count Session + ~59 placeholder Stock Count records (one per Core Order item)
-2. Evan walks locations, enters `Quantity` (total on hand) per item in Airtable views grouped by `Location (from Item)` lookup
+2. Evan walks each area, enters counts in the corresponding tally column (all ~59 items visible in one sorted list)
 3. Evan marks session "Completed"
 4. `Waratah_ValidateStockCount.gs` → Auto-fills blanks to 0, flags outliers, sets status to "Validated" or "Needs Review"
 5. `Waratah_GenerateStockOrders.gs` → Aggregates counts, looks up par levels + prep usage, creates Stock Order records
@@ -224,6 +233,28 @@ RECIPE_SCALER_URL=<DEPLOYED_WEB_APP_URL>
 ---
 
 ## Recent Changes
+
+### 2026-03-21 — Stock Count Location Tally Fields (5-Area Model)
+
+**Stock Counts table — 5 new number fields + formula:**
+- Added `Public Bar`, `Terrace Bar`, `Banquettes`, `Cool Rooms`, `Back Storage` (number, 1dp) — one per counting area
+- `Total On Hand` formula field to be added in Airtable UI: `IF(OR({Public Bar},{Terrace Bar},{Banquettes},{Cool Rooms},{Back Storage}), ({Public Bar}+{Terrace Bar}+{Banquettes}+{Cool Rooms}+{Back Storage}), BLANK())`
+- Returns BLANK() when all tallies empty (preserves "not counted" detection)
+
+**`Waratah_ValidateStockCount.gs` — Updated for formula field:**
+- `countQuantityField` changed from `"Quantity"` to `"Total On Hand"`
+- Removed auto-fill-to-zero logic (can't write to formula fields)
+- Renamed `autoFilledZero` tracking to `notCounted` — items with null `Total On Hand` are flagged as "not counted" and block validation
+- Removed `countLocationField` from query (no longer used)
+
+**`Waratah_GenerateStockOrders.gs` — Updated:**
+- `countQuantityField` changed from `"Quantity"` to `"Total On Hand"`
+
+**Manual step required:**
+- Create `Total On Hand` formula field in Airtable UI (MCP API doesn't support formula field creation)
+- Configure "Stock Count" view: filter by session status "In Progress", sort by Item Name A-Z, show tally columns + Total On Hand + Previous Count
+
+---
 
 ### 2026-03-21 — Stock Count Schema Audit & Documentation
 

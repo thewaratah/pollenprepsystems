@@ -47,7 +47,7 @@ const CONFIG = {
   countItemField: "Item",
   countLocationField: "Location",
   countSessionField: "Count Session",
-  countQuantityField: "Quantity",
+  countQuantityField: "Total On Hand",
   countPreviousField: "Previous Count",
   countNeedsReviewField: "Needs Review",
   countNotesField: "Notes",
@@ -237,7 +237,6 @@ const main = async () => {
   const countsQuery = await countsTable.selectRecordsAsync({
     fields: [
       CONFIG.countItemField,
-      CONFIG.countLocationField,
       CONFIG.countQuantityField,
       CONFIG.countPreviousField,
       CONFIG.countNeedsReviewField,
@@ -261,27 +260,25 @@ const main = async () => {
   // ── Phase 4: Validate counts ──
   console.log("Phase 4: Validating counts...");
 
-  const autoFilledZero = [];  // Records with null quantity → auto-filled to 0
+  const notCounted = [];     // Records where Total On Hand is null (no tallies entered)
   const outliers = [];        // Records with suspicious counts
   const negativeQty = [];     // Records with negative quantities
   let validCount = 0;
 
   for (const rec of sessionCounts) {
-    let qty = rec.getCellValue(CONFIG.countQuantityField);
+    const qty = rec.getCellValue(CONFIG.countQuantityField); // "Total On Hand" formula field
     const prevQty = rec.getCellValue(CONFIG.countPreviousField);
     const itemRef = rec.getCellValue(CONFIG.countItemField);
-    const locRef = rec.getCellValue(CONFIG.countLocationField);
     const itemName = itemRef && itemRef[0] ? itemNameMap.get(itemRef[0].id) || "(Unknown)" : "(No item)";
-    const locName = locRef && locRef[0] ? locRef[0].name || "(Unknown)" : "(No location)";
 
     if (qty == null) {
-      // Treat blank as 0 — item not in stock at this location
-      qty = 0;
-      autoFilledZero.push({ id: rec.id, itemName, locName });
+      // Formula returns BLANK() when all 5 tally fields are empty — item not counted
+      notCounted.push({ id: rec.id, itemName });
+      continue;
     }
 
     if (qty < 0) {
-      negativeQty.push({ id: rec.id, itemName, locName, qty });
+      negativeQty.push({ id: rec.id, itemName, qty });
       continue;
     }
 
@@ -289,19 +286,19 @@ const main = async () => {
     if (prevQty != null && prevQty > 0) {
       if (qty === 0) {
         outliers.push({
-          id: rec.id, itemName, locName, qty, prevQty,
+          id: rec.id, itemName, qty, prevQty,
           reason: `0 count vs previous ${prevQty} — complete depletion`,
         });
       } else {
         const ratio = qty / prevQty;
         if (ratio > CONFIG.outlierHighMultiplier) {
           outliers.push({
-            id: rec.id, itemName, locName, qty, prevQty,
+            id: rec.id, itemName, qty, prevQty,
             reason: `${qty} is ${ratio.toFixed(1)}x previous (${prevQty})`,
           });
         } else if (ratio < CONFIG.outlierLowMultiplier) {
           outliers.push({
-            id: rec.id, itemName, locName, qty, prevQty,
+            id: rec.id, itemName, qty, prevQty,
             reason: `${qty} is ${(ratio * 100).toFixed(0)}% of previous (${prevQty}) — large drop`,
           });
         }
@@ -312,18 +309,18 @@ const main = async () => {
   }
 
   console.log(`  Valid: ${validCount}`);
-  console.log(`  Auto-filled to 0: ${autoFilledZero.length}`);
+  console.log(`  Not counted: ${notCounted.length}`);
   console.log(`  Negative quantity: ${negativeQty.length}`);
   console.log(`  Outliers flagged: ${outliers.length}`);
 
-  if (autoFilledZero.length > 0) {
+  if (notCounted.length > 0) {
     console.log("");
-    console.log("  Auto-filled blanks → 0:");
-    for (const m of autoFilledZero.slice(0, CONFIG.maxIssuesToShow)) {
-      console.log(`    - ${m.itemName} @ ${m.locName}`);
+    console.log("  Not counted (no tallies entered):");
+    for (const m of notCounted.slice(0, CONFIG.maxIssuesToShow)) {
+      console.log(`    - ${m.itemName}`);
     }
-    if (autoFilledZero.length > CONFIG.maxIssuesToShow) {
-      console.log(`    ... and ${autoFilledZero.length - CONFIG.maxIssuesToShow} more`);
+    if (notCounted.length > CONFIG.maxIssuesToShow) {
+      console.log(`    ... and ${notCounted.length - CONFIG.maxIssuesToShow} more`);
     }
   }
 
@@ -331,7 +328,7 @@ const main = async () => {
     console.log("");
     console.log("  Negative quantities:");
     for (const n of negativeQty.slice(0, 10)) {
-      console.log(`    - ${n.itemName} @ ${n.locName}: ${n.qty}`);
+      console.log(`    - ${n.itemName}: ${n.qty}`);
     }
   }
 
@@ -339,7 +336,7 @@ const main = async () => {
     console.log("");
     console.log("  Outliers:");
     for (const o of outliers.slice(0, CONFIG.maxIssuesToShow)) {
-      console.log(`    - ${o.itemName} @ ${o.locName}: ${o.reason}`);
+      console.log(`    - ${o.itemName}: ${o.reason}`);
     }
     if (outliers.length > CONFIG.maxIssuesToShow) {
       console.log(`    ... and ${outliers.length - CONFIG.maxIssuesToShow} more`);
@@ -347,21 +344,11 @@ const main = async () => {
   }
   console.log("");
 
-  // ── Phase 4b: Auto-fill null quantities to 0 ──
-  if (autoFilledZero.length > 0 && !dryRun) {
-    const zeroUpdates = autoFilledZero.map(r => ({
-      id: r.id,
-      fields: { [CONFIG.countQuantityField]: 0 },
-    }));
-    await batchUpdate_(countsTable, zeroUpdates);
-    console.log(`  Wrote 0 to ${zeroUpdates.length} blank records`);
-  }
-  console.log("");
-
   // ── Phase 5: Flag records needing review ──
   console.log("Phase 5: Flagging records for review...");
 
   const needsReviewIds = new Set([
+    ...notCounted.map(n => n.id),
     ...negativeQty.map(n => n.id),
     ...outliers.map(o => o.id),
   ]);
@@ -392,13 +379,17 @@ const main = async () => {
   // ── Phase 6: Determine result status ──
   console.log("Phase 6: Determining validation result...");
 
-  const hasBlockers = negativeQty.length > 0;
+  const hasBlockers = negativeQty.length > 0 || notCounted.length > 0;
   const hasOutliers = outliers.length > 0;
 
   let newStatus;
   let auditStatus;
 
-  if (hasBlockers) {
+  if (notCounted.length > 0) {
+    newStatus = "Needs Review";
+    auditStatus = "WARNING";
+    console.log(`  Result: NEEDS REVIEW (${notCounted.length} items not counted)`);
+  } else if (negativeQty.length > 0) {
     newStatus = "Needs Review";
     auditStatus = "WARNING";
     console.log("  Result: NEEDS REVIEW (negative quantities found)");
@@ -458,7 +449,7 @@ const main = async () => {
   console.log(`Result: ${newStatus}`);
   console.log(`Total Records: ${sessionCounts.length}`);
   console.log(`Valid: ${validCount}`);
-  console.log(`Auto-filled (blank→0): ${autoFilledZero.length}`);
+  console.log(`Not Counted: ${notCounted.length}`);
   console.log(`Negative: ${negativeQty.length}`);
   console.log(`Outliers: ${outliers.length}`);
   console.log(`Execution Time: ${executionTime}s`);
@@ -469,13 +460,13 @@ const main = async () => {
     await writeAuditLog_(auditLogTable, {
       scriptName: CONFIG.scriptName,
       status: auditStatus,
-      message: `Validation ${newStatus}: ${validCount} valid, ${autoFilledZero.length} auto-filled to 0, ${outliers.length} outliers`,
+      message: `Validation ${newStatus}: ${validCount} valid, ${notCounted.length} not counted, ${outliers.length} outliers`,
       details: [
         `Session Date: ${sessionDate}`,
         `Result: ${newStatus}`,
         `Total: ${sessionCounts.length}`,
         `Valid: ${validCount}`,
-        `Auto-filled (blank→0): ${autoFilledZero.length}`,
+        `Not Counted: ${notCounted.length}`,
         `Negative: ${negativeQty.length}`,
         `Outliers: ${outliers.length}`,
         `Flags Updated: ${countUpdates.length}`,
@@ -489,7 +480,7 @@ const main = async () => {
   // Output for Airtable interface
   output.set("status", newStatus.toLowerCase().replace(/ /g, "_"));
   output.set("validCount", validCount);
-  output.set("autoFilledCount", autoFilledZero.length);
+  output.set("notCountedCount", notCounted.length);
   output.set("outlierCount", outliers.length);
   output.set("negativeCount", negativeQty.length);
   output.set("executionTime", executionTime);
