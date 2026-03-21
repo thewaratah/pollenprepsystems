@@ -51,6 +51,8 @@ const CONFIG = {
   itemTypeField: "Item Type",
   itemSupplierField: "Supplier",
   itemParLevelsField: "Par Levels",
+  itemOrderVolumeField: "Order Volume",
+  itemUnitField: "Unit",
 
   // Par Levels fields
   parItemLinkField: "Item Link",
@@ -404,7 +406,7 @@ const main = async () => {
   console.log("Phase 6: Loading item metadata...");
 
   const itemsQuery = await itemsTable.selectRecordsAsync({
-    fields: [CONFIG.itemNameField, CONFIG.itemBarStockField, CONFIG.itemTypeField, CONFIG.itemSupplierField],
+    fields: [CONFIG.itemNameField, CONFIG.itemBarStockField, CONFIG.itemTypeField, CONFIG.itemSupplierField, CONFIG.itemOrderVolumeField, CONFIG.itemUnitField],
   });
 
   const itemMeta = new Map();
@@ -413,6 +415,8 @@ const main = async () => {
       name: item.getCellValue(CONFIG.itemNameField) || "(Unknown)",
       type: item.getCellValue(CONFIG.itemTypeField)?.name || "",
       supplierRef: item.getCellValue(CONFIG.itemSupplierField),
+      orderVolume: item.getCellValue(CONFIG.itemOrderVolumeField) || 1,
+      unit: item.getCellValue(CONFIG.itemUnitField)?.name || "",
     });
   }
 
@@ -448,9 +452,14 @@ const main = async () => {
     if (!meta) continue;
 
     const parQty = parByItem.get(itemId) || 0;
-    const prepUsage = prepUsageByItem.get(itemId) || 0;
+    const prepUsageRaw = prepUsageByItem.get(itemId) || 0; // in recipe units (ml/g)
+    const orderVolume = meta.orderVolume || 1;
 
-    // Core formula
+    // Convert prep usage from recipe units to order units (e.g., ml → bottles)
+    // For case/keg items (orderVolume=1), no conversion needed
+    const prepUsage = orderVolume > 1 ? prepUsageRaw / orderVolume : prepUsageRaw;
+
+    // Core formula — all values now in order units (bottles/cases/kegs)
     const serviceShortfall = Math.max(0, parQty - onHand);
     const combinedOrder = serviceShortfall + prepUsage;
 

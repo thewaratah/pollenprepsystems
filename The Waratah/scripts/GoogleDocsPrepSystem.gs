@@ -2327,12 +2327,15 @@ function exportCombinedOrderingDoc_() {
     body.appendParagraph(supplierName).setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
 
     rows.forEach(r => {
-      const line = `${r.itemName}  |  On Hand: ${fmtQty_(r.onHand)}  |  Par: ${fmtQty_(r.parQty)}  |  Prep: ${fmtQty_(r.prepUsage)}  |  Order: ${fmtQty_(r.combinedQty)}${r.unit || ""}`;
+      // Display unit: ml items show no suffix (quantities are in bottles, item name has size);
+      // case/keg items show their unit label
+      const displayUnit = (r.unit && r.unit !== "ml") ? r.unit : "";
+      const line = `${r.itemName}  |  On Hand: ${fmtQty_(r.onHand)}  |  Par: ${fmtQty_(r.parQty)}  |  Prep: ${fmtQty_(r.prepUsage)}  |  Order: ${fmtQty_(r.combinedQty)}${displayUnit}`;
       const li = appendBullet_(body, line);
       li.setFontFamily("Avenir");
 
       // Bold the order quantity
-      const boldText = `Order: ${fmtQty_(r.combinedQty)}${r.unit || ""}`;
+      const boldText = `Order: ${fmtQty_(r.combinedQty)}${displayUnit}`;
       appendTextWithBoldUnderline_(li, line, boldText);
     });
   });
