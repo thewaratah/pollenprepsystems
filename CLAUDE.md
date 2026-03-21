@@ -103,8 +103,8 @@ PREP Systems/
 │   ├── plans/                    # Feature plans (stock-count-ordering-plan.md)
 │   └── CLAUDE.md                 # Waratah guide
 ├── .claude/
-│   ├── agents/                   # 13 specialist agents
-│   └── commands/                 # 14 slash commands
+│   ├── agents/                   # 12 specialist agents
+│   └── commands/                 # 15 slash commands
 └── CLAUDE.md                     # This navigation file (you are here)
 ```
 

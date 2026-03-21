@@ -1,10 +1,18 @@
 # Stock Count + Ordering System — The Waratah
 
-**Status:** PLAN ONLY — Not yet implemented
-**Date:** 2026-03-16 (revised — single-operator model)
+**Status:** PARTIALLY IMPLEMENTED — Scripts operational, legacy data cleanup pending
+**Date:** 2026-03-16 (revised — single-operator model), audited 2026-03-21
 **Owner:** Evan (Bar Manager — sole counter/orderer)
-**Scope:** Spirits, wines, beers across 5 storage locations
+**Scope:** 59 Core Order items across 12 physical storage locations
 **Cadence:** Mondays before 1pm (aligned with prep cycle)
+
+> **2026-03-21 Audit Notes:**
+> - The plan originally assumed 5 locations and ~100 items. Actual: 12 locations, 59 Core Order items.
+> - Scripts (InitStockCount, ValidateStockCount, GenerateStockOrders, ExportOrderingDoc) are implemented and operational.
+> - The one-record-per-item-per-session model was adopted (not item×location). ~59 records/session.
+> - Stock Counts table has ~17,800 legacy records from old item×location model — needs manual bulk delete in Airtable UI.
+> - 3 aggregate Storage Location records (Public Bar, Terrace Bar, Backbars) should be deleted — confirmed as duplicates.
+> - `Core Order = true` (not just `Bar Stock = true`) is the canonical counting scope filter.
 
 ---
 

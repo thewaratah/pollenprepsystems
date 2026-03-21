@@ -34,7 +34,7 @@ The Waratah PREP system uses a two-script architecture:
 - `Waratah_FinaliseCount.gs` - Validate stocktake
 - `Waratah_GeneratePrepRun.gs` - Generate prep tasks
 - `Waratah_GeneratePrepSheet_TimeBasedPolling.gs` - Mark exports as REQUESTED
-- `Waratah_InitStockCount.gs` - Initialize stock count session (create Count Session record + placeholder Weekly Counts)
+- `Waratah_InitStockCount.gs` - Initialize stock count session (create Count Session record + one Stock Count placeholder per Core Order item)
 - `Waratah_ValidateStockCount.gs` - Validate stock count data before finalisation
 - `Waratah_GenerateStockOrders.gs` - Generate stock orders from stocktake (writes to Stock Orders table; idempotent — deletes existing orders before regenerating)
 - `Waratah_ExportOrderingDoc.gs` - Trigger ordering doc export via GAS polling (sets "Ordering Export State" = REQUESTED on Count Sessions)
@@ -55,6 +55,29 @@ The Waratah PREP system uses a two-script architecture:
 **Airtable Tables/Fields for Stock Ordering:**
 - **Count Sessions** table: "Ordering Export State" single-select field (options: REQUESTED, COMPLETED, ERROR)
 - **Stock Orders** table: one record per item with supplier, qty, unit, linked to Count Session. `Waratah_GenerateStockOrders.gs` Phase 8 cleanup deletes existing orders before regenerating (idempotent re-runs). Accepts sessions with status "Validated" or "Orders Generated".
+
+### Stock Count Data Model
+
+**Scope:** Items with `Core Order = true` on the Items table (~59 items). This is a subset of `Bar Stock = true` (~414 items). `Core Order` is the canonical filter for counting scope.
+
+**Architecture:** One Stock Count record per item per Count Session — **no location dimension**. Location info lives on Items as a multi-select (`Location` field, 12 physical locations) and is used only for Airtable view grouping to guide Evan's walk.
+
+**12 Physical Locations** (Items `Location` multi-select):
+Banquettes, Under PB Station, Under TB Station, PB Backbar, TB Backbar, Cool Room, Keg Room, Freezer, PB Fridge, TB Fridge, Hallway, B1
+
+**Stock Count Pipeline:**
+1. `Waratah_InitStockCount.gs` → Creates Count Session + ~59 placeholder Stock Count records (one per Core Order item)
+2. Evan walks locations, enters `Quantity` (total on hand) per item in Airtable views grouped by `Location (from Item)` lookup
+3. Evan marks session "Completed"
+4. `Waratah_ValidateStockCount.gs` → Auto-fills blanks to 0, flags outliers, sets status to "Validated" or "Needs Review"
+5. `Waratah_GenerateStockOrders.gs` → Aggregates counts, looks up par levels + prep usage, creates Stock Order records
+6. `Waratah_ExportOrderingDoc.gs` → Triggers ordering doc export via GAS polling
+
+**Ordering formula per item:**
+```
+Service Shortfall = MAX(0, Par Qty - Total On Hand)
+Combined Order Qty = Service Shortfall + Prep Usage (from latest Prep Run's Ingredient Requirements)
+```
 
 **Note — superseded script:**
 - `GeneratePrepSheet.gs` (single-record Airtable automation version) is **superseded** by `GeneratePrepSheet_TimeBasedPolling.gs` for all use cases. The single-record version requires Airtable automation infrastructure to pass `recordId` and cannot be run manually. The polling version works for both manual runs and future scheduled triggers. Use only the polling version.
@@ -181,7 +204,7 @@ RECIPE_SCALER_URL=<DEPLOYED_WEB_APP_URL>
 - Review and optimize after first month
 
 ### Staff
-- Ordering staff: **Andie**, **Blade** (vs Gooch/Sabs at Sakura)
+- Stock count + ordering: **Evan** (sole operator — combined ordering doc replaces per-staff Andie/Blade system)
 - Prep Team Lead: TBD
 - Manager: TBD
 
@@ -201,6 +224,46 @@ RECIPE_SCALER_URL=<DEPLOYED_WEB_APP_URL>
 ---
 
 ## Recent Changes
+
+### 2026-03-21 — Stock Count Schema Audit & Documentation
+
+**Stock Count data model documented:**
+- `Core Order = true` confirmed as the canonical counting scope filter (~59 items), not `Bar Stock` alone (~414 items)
+- One Stock Count record per item per session — no location dimension in records
+- Location info lives on Items multi-select (12 physical locations) for view grouping only
+- Stock Count pipeline fully documented: Init → Count → Validate → Generate Orders → Export Ordering Doc
+
+**Schema findings:**
+- Items table has dual location systems: `Location` multi-select (12 choices, canonical) and `Storage Location` linked records (redundant)
+- Storage Locations table has 15 records — 3 are aggregates to be removed (Public Bar, Terrace Bar, Backbars)
+- Stock Counts table had 17,874 legacy records from old item×location×session model — scripts already refactored to one-record-per-item model; legacy data needs manual cleanup in Airtable UI
+- 5 Core Order items missing `Location` multi-select values: 85% Ethanol, Appleton Estate Signature Blend, Archie Rose White Cane Rum, Dolin Dry, Margan Verjus, St Germain
+
+**Staff section updated:**
+- Ordering staff changed from "Andie, Blade" to "Evan (sole operator)" — reflects combined ordering doc system
+
+---
+
+### 2026-03-21 — Project Restructuring: Airtable + GAS + Google Docs + Slack Only
+
+**System scope reduced — Knowledge Platform, Supabase RAG, and Reference directories removed:**
+- Deleted `prep-knowledge-platform/` (Next.js/Vercel app), `Reference/` directory, Python RAG scripts, SQL schema files, Supabase docs
+- Deleted `The Waratah/.claude/` (SuperClaude framework with hardcoded API keys)
+- System is now Airtable + GAS + Google Docs + Slack only — no Next.js, no Vercel, no Supabase
+- Project size reduced from 6.5GB to 349MB
+
+**Agents cleaned and enhanced:**
+- Deleted `knowledge-platform-agent` and `rag-knowledge-agent` (no longer applicable)
+- All remaining agents scrubbed of Vercel/Supabase/RAG references
+- `airtable-mcp-agent` enhanced with operational workflows
+- `slack-ordering-agent` enhanced with Slack MCP inspection
+- New `/audit` command added for cross-venue Airtable schema comparison
+
+**Key note for future sessions:**
+- There is no Knowledge Platform, Supabase, or RAG pipeline — do not attempt to deploy or reference these components
+- All historical Recent Changes entries referencing removed systems are annotated with "(System removed 2026-03-21)"
+
+---
 
 ### 2026-03-21 — Documentation Sync: Stock Ordering Scripts + Script Properties Fix
 

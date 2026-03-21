@@ -265,3 +265,29 @@ Converts `STAFF_GUIDE.md`, `MANAGER_GUIDE.md`, `NEW_STARTER_WELCOME.md`, `TROUBL
 | [MANAGER_GUIDE.md](docs/MANAGER_GUIDE.md) | Managers | Configuration, troubleshooting |
 | [TECHNICAL_REFERENCE.md](docs/TECHNICAL_REFERENCE.md) | Developers | Script internals, algorithms, deployment |
 | [critical-patterns.md](docs/solutions/patterns/critical-patterns.md) | Developers | Required reading — common pitfalls |
+
+---
+
+## Recent Changes
+*Session-by-session change log (most recent first).*
+
+### 2026-03-21 — Deploy-to-Drive, Stale File Cleanup, Automation URLs
+
+**`docs/deploy-docs-to-drive.js` — New staff doc sync script:**
+- Auto-converts `STAFF_GUIDE.md`, `MANAGER_GUIDE.md`, `NEW_STARTER_WELCOME.md`, `TROUBLESHOOTING.md` to `.docx` and uploads to shared Google Drive folder
+- Run automatically on each `/deploy sakura` or manually via `node deploy-docs-to-drive.js`
+- Uses service account `claude-sheets-access@quick-asset-465310-h5.iam.gserviceaccount.com`
+
+**`config/airtableautomationURLs` — Updated:**
+- Added ClearPrepData automation URL to Sakura's config
+
+**Stale files deleted:**
+- `docs/plans/` directory removed (negligible-stock-decrements plan and other stale plans)
+- `templates/` directory removed
+- `SakuraHouseVisualAssets/` directory removed
+- Multiple stale doc files removed (AGENT_CATEGORY_REVIEW.md, AIRTABLE-RECIPE-SYNC.md, ARCHITECTURE_ANALYSIS_REPORT.md, DIRECTORY-ANALYSIS.md, PREP-AGENT-A4-SUMMARY.md, README-Level*.md, SUPABASE_RAG_SETUP.md, setup/ directory)
+
+**Project-wide restructuring (see also Waratah CLAUDE.md):**
+- Knowledge Platform (Next.js/Vercel), Supabase RAG pipeline, and Reference directories removed from both venues
+- System is now Airtable + GAS + Google Docs + Slack only
+- Project size reduced from 6.5GB to 349MB
