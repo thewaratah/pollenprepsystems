@@ -2207,6 +2207,9 @@ function exportCombinedOrderingDoc_() {
           if (id) barStockItemIds.add(id);
         });
 
+        // Aggregate prep-only items by itemId (same item may appear in multiple recipes)
+        const prepOnlyAgg = new Map(); // itemId -> { itemName, unit, qty, supplier }
+
         reqs.forEach(r => {
           const itemId = firstId_(r.fields[F.reqItem]);
           if (!itemId || barStockItemIds.has(itemId)) return;
@@ -2233,8 +2236,14 @@ function exportCombinedOrderingDoc_() {
           const unit = cellToText_(item.fields[F.itemUnit]);
           const supplier = String(r.fields[F.reqSupplierNameStatic] || "").trim();
 
-          prepOnlyRows.push({ itemName, unit, qty, supplier });
+          if (prepOnlyAgg.has(itemId)) {
+            prepOnlyAgg.get(itemId).qty += qty;
+          } else {
+            prepOnlyAgg.set(itemId, { itemName, unit, qty, supplier });
+          }
         });
+
+        prepOnlyAgg.forEach(row => prepOnlyRows.push(row));
       }
     }
   } catch (e) {
