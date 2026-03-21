@@ -25,6 +25,7 @@
 | Airtable base schema, linked records, views, REST API | `airtable-schema-agent` |
 | Live Airtable data access, querying records via MCP | `airtable-mcp-agent` |
 | Recipe Scaler (`RecipeScaler.gs`) | `recipe-scaler-agent` |
+| Cross-venue schema comparison or audit | `airtable-mcp-agent` via `/audit` |
 
 ---
 
@@ -46,6 +47,7 @@
 | `/airtable-mcp [task]` | Live Airtable record queries via MCP (read/inspect data, not schema) |
 | `/scaler [task]` | Recipe Scaler GAS + UI |
 | `/gas-docs [task]` | Google Docs formatting in GAS — DocumentApp API, hybrid template engine, insertXxx_/appendXxx_ helpers |
+| `/audit [scope]` | Cross-venue Airtable schema comparison via MCP (defaults to Items + Recipes tables) |
 
 ---
 
