@@ -137,39 +137,7 @@ The Recipe Scaler lets you scale any recipe up or down to a specific quantity. Y
 
 ---
 
-## 6. How to Use the Knowledge Platform (AI Chat)
-
-The Knowledge Platform is an AI assistant that can answer questions about recipes, prep procedures, and food science.
-
-**URL:** [Knowledge Platform](https://prep-knowledge-platform.vercel.app/?venue=waratah)
-
-### What It Knows
-
-- All Waratah recipes and their ingredients
-- Food science information from the textbook library
-- Prep procedures and techniques
-- Current stock levels and par information (via Airtable)
-
-### How to Ask Questions
-
-Just type your question in plain English. Examples:
-- "Why does citrus curdle dairy in some cocktail specs but not others?"
-- "What's the science behind fat-washing spirits?"
-- "How do I fix a syrup that's crystallising?"
-- "What does saline solution actually do to a drink's flavour?"
-- "Why does my oleo saccharum taste bitter instead of bright?"
-- "How long can I batch a citrus cordial before it loses its punch?"
-- "What's the difference between clarified and super juice for shelf life?"
-
-### What It Cannot Do
-
-- It cannot change Airtable data or modify prep lists
-- It cannot place orders
-- If a recipe seems wrong, submit feedback instead (see Section 7)
-
----
-
-## 7. How to Submit Feedback
+## 6. How to Submit Feedback
 
 If you notice something wrong with a recipe, prep doc, or ordering list, submit it through the Feedback Form.
 
@@ -198,7 +166,7 @@ If you notice something wrong with a recipe, prep doc, or ordering list, submit 
 
 ---
 
-## 8. Slack Notifications
+## 7. Slack Notifications
 
 Every Monday morning when the prep docs are ready, you will receive Slack notifications.
 
@@ -215,31 +183,29 @@ Each message contains clickable links to the Google Docs. The doc names include 
 
 ### Feedback Notifications
 
-When someone submits feedback (see Section 7), a notification also goes to the prep Slack channel with details of what was reported.
+When someone submits feedback (see Section 6), a notification also goes to the prep Slack channel with details of what was reported.
 
 ---
 
-## 9. Troubleshooting
+## 8. Troubleshooting
 
 | Problem | What to Do |
 |---------|-----------|
 | **I can't find this week's docs** | Check the prep Slack channel for the Monday morning notification. If no notification was sent, check the [Google Drive folder](https://drive.google.com/drive/folders/1Zekjhk78dwH5MNoHXnvu1zI4VtbZNckx). If nothing is there, contact Evan. |
 | **The counts were not cleared on Saturday** | Contact Evan — the Saturday automation may need to be re-run. |
-| **A recipe has wrong quantities** | Submit feedback through the Feedback Form (Section 7). |
+| **A recipe has wrong quantities** | Submit feedback through the Feedback Form (Section 6). |
 | **An item is missing from the prep list** | Check that the item is set to Active in Airtable and has a par level. If it should be there, contact Evan. |
 | **The Recipe Scaler shows no recipes** | Check your internet connection. If it persists, contact Evan. |
-| **The AI chat gives wrong answers** | The AI works from a knowledge base, not live data. If a recipe is wrong in the system, submit feedback. |
 | **I got a Slack notification but the doc links don't work** | Try opening the link in a browser (not the Slack in-app viewer). If still broken, contact Evan. |
 | **My ordering doc is missing a supplier** | The ingredient may not have a supplier assigned in Airtable. Check the "NEEDS ASSIGNMENT" section at the bottom of your ordering doc, and contact Evan to fix the assignment. |
 
 ---
 
-## 10. Key Links and Contacts
+## 9. Key Links and Contacts
 
 | Resource | Link |
 |----------|------|
 | **Google Drive Prep Folder** | [Open Folder](https://drive.google.com/drive/folders/1Zekjhk78dwH5MNoHXnvu1zI4VtbZNckx) |
-| **Knowledge Platform (AI Chat)** | [Open Platform](https://prep-knowledge-platform.vercel.app/?venue=waratah) |
 | **Recipe Scaler** | Link in every prep doc ("Scale this recipe"), or ask Evan for the direct URL |
 | **Feedback Form** | Link at the bottom of every prep doc, or ask Evan for the direct URL |
 | **Airtable Base** | Open the Airtable app and select The Waratah base |

@@ -19,11 +19,7 @@ Production instance of the PREP system for The Waratah venue.
 - Script Backups (Airtable + GAS): `1FN-IyBCXj1r_zDNunpZzR-8u8DRSSiSp` - https://drive.google.com/drive/folders/1FN-IyBCXj1r_zDNunpZzR-8u8DRSSiSp
 - Archive: (to be configured)
 
-**Knowledge Platform:** https://prep-knowledge-platform.vercel.app/?venue=waratah
-
 **Staff Guide:** [`docs/guides/waratah-staff-guide.md`](docs/guides/waratah-staff-guide.md) — plain-English guide for bar staff (copy-paste into Word/Google Docs for distribution)
-
-**Supabase RAG Tables:** `rag_chunks`, `rag_documents` (joined via `match_documents()` — `waratah_rag_*` tables are empty, do not use)
 
 ---
 
@@ -159,27 +155,6 @@ FEEDBACK_FORM_URL=<DEPLOYED_WEB_APP_URL>
 RECIPE_SCALER_URL=<DEPLOYED_WEB_APP_URL>
 ```
 
-### Knowledge Platform Environment (.env.local)
-
-```bash
-# Venue Selection
-NEXT_PUBLIC_VENUE_ID=waratah
-
-# Waratah Configuration
-WARATAH_AIRTABLE_BASE_ID=appfcy14ZikhKZnRS
-WARATAH_DOCS_FOLDER_ID=1Zekjhk78dwH5MNoHXnvu1zI4VtbZNckx
-WARATAH_GAS_WEBAPP_URL=<DEPLOYED_URL>
-
-# Shared credentials (same as Sakura) — stored in .env.local, NOT committed
-NEXT_PUBLIC_SUPABASE_URL=<see .env.local>
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<see .env.local>
-SUPABASE_SERVICE_ROLE_KEY=<see .env.local>
-OPENAI_API_KEY=<see .env.local>
-ANTHROPIC_API_KEY=<see .env.local>
-CLAUDE_MODEL=claude-sonnet-4-20250514
-AIRTABLE_PAT=<see .env.local>
-```
-
 ---
 
 ## Weekly Workflow
@@ -222,8 +197,6 @@ AIRTABLE_PAT=<see .env.local>
 | Script Properties | ✅ Complete | All properties configured |
 | Templates | ✅ Complete | 3 templates: Batching, Ingredient Prep, Combined Ordering (Phase 3 — per-staff Andie/Blade templates retired) |
 | Web Apps | ✅ Complete | Deployed 2026-02-26; `RECIPE_SCALER_URL` updated to Waratah-specific URL |
-| Knowledge Platform | ✅ Complete | Deployed at prep-knowledge-platform.vercel.app (2026-02-20) |
-| RAG Knowledge Base | ✅ Complete | Waratah content ingested; data in `rag_chunks` + `rag_documents` tables (`waratah_rag_*` tables are empty — do not use) |
 
 ---
 
@@ -556,24 +529,24 @@ AIRTABLE_PAT=<see .env.local>
 
 ### 2026-02-20 — RAG Enrichment, UI Fixes & GAS Library Error
 
-**Bibliography enrichment wired into RAG pipeline (`src/app/api/chat/route.ts`):**
+**(System removed 2026-03-21)** **Bibliography enrichment wired into RAG pipeline (`src/app/api/chat/route.ts`):**
 - `searchKnowledge()` now calls `fetchBibliography()` after Supabase vector search
 - Raw `file_name` from Supabase stored as `rawFilename` in chunk metadata (separate from display `filename`)
 - Airtable lookup tries both `rawFilename` and `${rawFilename}.pdf` variants to handle extension mismatches
 - `buildContext()` uses `bibliographicRef` if present; falls back to `title [category]` if not
 - Dedup slice limit bumped 10 → 20
 
-**`search_documents_by_topic` tool added to Super Agent:**
+**(System removed 2026-03-21)** **`search_documents_by_topic` tool added to Super Agent:**
 - Wired `searchDocumentsByTopic()` as a `streamText` tool
 - Listed in system prompt so Claude knows to use it for topic/subject-area queries
 
-**Recipe Scaler colour fix (`src/app/scaler/page.tsx`):**
+**(System removed 2026-03-21)** **Recipe Scaler colour fix (`src/app/scaler/page.tsx`):**
 - All `#8a8a8a` (light grey) replaced with `#2D3A16` (Waratah dark green) — replace_all
 - Ingredient list `<li>` elements: added explicit `color: '#1a1a1a'` (were invisible — inherited global cream `--foreground: #E8EBE0` on white cards)
 - Bullet dots: `bg-gray-400` → `backgroundColor: '#4A5D23'`
 - Reset button border/text: `#e5e5e5/#8a8a8a` → `#2D3A16`
 
-**Feedback form audit (`src/app/feedback/page.tsx` + `src/app/api/prep/feedback/route.ts`):**
+**(System removed 2026-03-21)** **Feedback form audit (`src/app/feedback/page.tsx` + `src/app/api/prep/feedback/route.ts`):**
 - Subtitle colour `#8a8a8a` → `#2D3A16`
 - Dropdowns confirmed clean: Andie/Blade ✅, no Sakura/Gooch/Sabs references ✅
 - **Critical fix:** API route fallback base ID was `appNsFRhuU47e9qlR` (Sakura) → corrected to `appfcy14ZikhKZnRS` (Waratah)
@@ -593,7 +566,7 @@ AIRTABLE_PAT=<see .env.local>
 
 ### 2026-02-20 — Knowledge Platform Launch & Branding Fixes
 
-**Knowledge Platform deployed to Vercel:**
+**(System removed 2026-03-21)** **Knowledge Platform deployed to Vercel:**
 - URL: https://prep-knowledge-platform.vercel.app/?venue=waratah
 - Vercel project: `thewaratahs-projects`
 - Super Agent at `/api/chat` — Claude Sonnet 4 + RAG (Supabase pgvector) + 7 Airtable tools
@@ -696,20 +669,6 @@ bash sync-airtable-scripts-to-drive.sh
 This uploads the 7 Airtable-only scripts + `GoogleDocsPrepSystem.gs` as .txt files + a README to the [Script Backups](https://drive.google.com/drive/folders/1FN-IyBCXj1r_zDNunpZzR-8u8DRSSiSp) Drive folder. Uses the clasp OAuth token for authentication.
 
 **This must be run after every change to Waratah scripts** — it is part of the deployment checklist.
-
-### Test Locally
-
-```bash
-cd prep-knowledge-platform
-NEXT_PUBLIC_VENUE_ID=waratah npm run dev
-```
-
-### Run RAG Ingestion
-
-```bash
-cd "THE WARATAH"
-python3 rag-ingest-waratah.py
-```
 
 ---
 
