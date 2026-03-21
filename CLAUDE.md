@@ -1,6 +1,6 @@
 # PREP SYSTEMS — Navigation Guide
 
-**Last Updated:** 2026-03-03
+**Last Updated:** 2026-03-21
 **Project Type:** Multi-venue kitchen prep automation (Airtable + GAS + Next.js)
 **Venues:** Sakura House, The Waratah
 
@@ -16,8 +16,8 @@
 | Any task touching Waratah files | `waratah-prep-agent` |
 | Task spans both venues | `prep-orchestrator` → parallelises into both venue agents |
 | After any GAS code change (>5 lines modified) | `gas-code-review-agent` before reporting work complete |
-| Before any `clasp push` | `deployment-agent` |
-| Before any `npx vercel --prod` | `deployment-agent` |
+| Before any `clasp push` | `documentation-agent` → then `deployment-agent` |
+| Before any `npx vercel --prod` | `documentation-agent` → then `deployment-agent` |
 | Any Knowledge Platform Next.js UI or API routes | `knowledge-platform-agent` |
 | Any CLAUDE.md / doc update | `documentation-agent` |
 | Multi-step feature with 3+ files across venues | `prep-orchestrator` |
@@ -67,10 +67,10 @@ Specialist agents live in `.claude/agents/`. Claude invokes them via the Task to
 | Airtable schema, table, or field changed | `airtable-schema-agent` — find all affected scripts first |
 | RAG ingestion or `match_documents()` changed | `rag-knowledge-agent` |
 | Recipe Scaler backend or UI changed | `recipe-scaler-agent` — verify per-venue web app URL |
-| Ready to `clasp push` | `deployment-agent` must run pre-deploy checklist first |
-| Ready to `npx vercel --prod` | `deployment-agent` must confirm env vars and build status |
-| Significant code change completed | `documentation-agent` to update relevant CLAUDE.md |
-| Waratah: any GAS deployment | `deployment-agent` — verify `.claspignore` before every push |
+| Significant code change completed | `documentation-agent` to update relevant CLAUDE.md + docs |
+| Ready to `clasp push` | `documentation-agent` first, then `deployment-agent` pre-deploy checklist |
+| Ready to `npx vercel --prod` | `documentation-agent` first, then `deployment-agent` env vars + build |
+| Waratah: any GAS deployment | `documentation-agent` first, then `deployment-agent` — verify `.claspignore` before every push |
 
 **Single entry point for non-trivial tasks:** describe the task to `prep-orchestrator` and it will route and parallelise automatically.
 
@@ -82,7 +82,7 @@ Specialist agents live in `.claude/agents/`. Claude invokes them via the Task to
 
 ### Working on SAKURA HOUSE?
 → **Read [`Sakura House/CLAUDE.md`](Sakura%20House/CLAUDE.md)** ✅ Production Ready
-- Scripts: `ClearWeeklyCount.gs`, `FinaliseCount.gs`, `GeneratePrepRun.gs`, `GoogleDocsPrepSystem.gs`
+- Scripts: `ClearWeeklyCount.gs`, `ClearPrepData.gs`, `FinaliseCount.gs`, `GeneratePrepRun.gs`, `GoogleDocsPrepSystem.gs`
 - Recipe name field: `Recipe Name` (plain text)
 - Ordering staff: Gooch, Sabs
 
@@ -107,9 +107,11 @@ Specialist agents live in `.claude/agents/`. Claude invokes them via the Task to
 PREP Systems/
 ├── Sakura House/
 │   ├── scripts/                  # GAS + Airtable scripts (no Waratah_ prefix)
+│   ├── docs/                     # AIRTABLE_SCHEMA.md, guides, plans
 │   └── CLAUDE.md                 # Sakura guide
 ├── The Waratah/
 │   ├── scripts/                  # GAS scripts + Waratah_*.gs Airtable scripts
+│   ├── plans/                    # Feature plans (stock-count-ordering-plan.md)
 │   ├── prep-knowledge-platform/  # Next.js app (shared, venue-switched by ?venue= param)
 │   └── CLAUDE.md                 # Waratah guide
 ├── .claude/
@@ -131,7 +133,7 @@ PREP Systems/
 | **Script prefix** | None | `Waratah_` for Airtable scripts |
 | **`.claspignore`** | Not required | Required — excludes `Waratah_*.gs` |
 | **Item types** | Standard | `"Batch"`, `"Sub Recipe"`, `"Sub-recipe"` (all 3 required) |
-| **Operating days** | 6 days (Mon–Sat) | 5 days (Mon–Fri cycle) |
+| **Weekly cycle** | Fri AM clear → Sat AM reset → Sat shift (count/generate/order) → Sun–Wed (delivery/prep) | Mon–Fri cycle |
 | **Status** | Production ✅ | Production ✅ |
 
 ---
@@ -149,7 +151,7 @@ PREP Systems/
 - Verify `.claspignore` first: `clasp status` should NOT show `Waratah_*.gs`
 
 ### For Both Venues:
-- Weekly cycle (automation): ClearWeeklyCount (Sat AM) → FinaliseCount (Mon AM) → GeneratePrepRun (Mon AM) → Export Docs → Slack
+- Sakura workflow: ClearPrepData (Fri 8 AM) → ClearWeeklyCount (Sat 8 AM) → Sat shift: count → finalise → generate → export → order → Sun–Wed: deliveries + prep
 - Waratah workflow: Stocktake Sunday → Mon AM automation → Ordering before 2pm Mon → Deliveries Tue → Prep Tue–Wed
 - Knowledge Platform URL: `https://the-waratah-prep-system.vercel.app/?venue=waratah`
 
@@ -178,4 +180,4 @@ PREP Systems/
 ---
 
 **Status:** Both venues fully operational and production-ready ✅
-**Last Updated:** 2026-03-03
+**Last Updated:** 2026-03-21

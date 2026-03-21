@@ -5,6 +5,22 @@
 ---
 
 ## Architecture Overview
+*How data flows from Airtable through GAS to Google Docs and Slack.*
+
+### User Interaction Layer
+
+Staff and managers interact with the system through **Airtable Interfaces** — purpose-built dashboards with buttons, forms, and filtered views. They never access raw tables directly. The trigger chain is:
+
+```
+Interface Button (user clicks)
+    → Airtable Automation (runs script)
+        → Script executes (reads/writes Airtable data)
+            → For exports: calls GAS webhook → Google Docs + Slack
+```
+
+Scheduled automations (ClearPrepData, ClearWeeklyCount) run on timers and do not require user interaction. All other automations (FinaliseCount, GeneratePrepRun, GeneratePrepSheet) are triggered by Interface buttons.
+
+### System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -51,13 +67,48 @@
 ---
 
 ## Script Reference
+*Version info, file locations, and execution environments for each script.*
 
 ### Location
 All scripts: `/scripts/`
 
 ### Script Versions
-All Airtable scripts: **v2.0** (with audit logging)
-GoogleDocsPrepSystem: **v4.5** (unified web app router)
+All Airtable scripts: **v2.0** (with audit logging), except:
+- GeneratePrepRun: **v3.0** (dynamic reorder points + buffer multiplier)
+- ClearPrepData: **v1.0** (Friday AM cleanup)
+
+GoogleDocsPrepSystem: **v4.2** (hybrid template engine)
+
+---
+
+## ClearPrepData.gs
+
+**Purpose:** Delete all Prep Tasks and Ingredient Requirements (Friday AM cleanup)
+
+**Trigger:** Airtable Automation — scheduled trigger, Friday 8:00 AM (automatic; no Interface button needed)
+
+**Version:** 1.0
+
+**Algorithm:**
+```javascript
+1. Query all records from Prep Tasks table
+2. Delete in batches of 50
+3. Query all records from Ingredient Requirements table
+4. Delete in batches of 50
+5. Log to Audit Log
+```
+
+**Configuration:**
+```javascript
+const CONFIG = {
+  tasksTableName: "Prep Tasks",
+  reqTableName: "Ingredient Requirements",
+  auditLogTableName: "Audit Log",
+  timeZone: "Australia/Sydney"
+};
+```
+
+**Supports:** `dryRun: true` for safe validation.
 
 ---
 
@@ -65,7 +116,7 @@ GoogleDocsPrepSystem: **v4.5** (unified web app router)
 
 **Purpose:** Initialize new stocktake session
 
-**Trigger:** Airtable Automation button
+**Trigger:** Airtable Automation — scheduled trigger, Saturday 8:00 AM (automatic; can also be triggered via Interface button)
 
 **Algorithm:**
 ```javascript
@@ -101,7 +152,7 @@ const CONFIG = {
 
 **Purpose:** Validate and lock stocktake data
 
-**Trigger:** Airtable Automation button
+**Trigger:** Airtable Automation — manager clicks **Finalise Count** button in the Interface during Saturday shift
 
 **Algorithm:**
 ```javascript
@@ -138,7 +189,7 @@ const CONFIG = {
 
 **Purpose:** Calculate prep requirements from stocktake
 
-**Trigger:** Airtable Automation button
+**Trigger:** Airtable Automation — manager clicks **Generate Prep Run** button in the Interface during Saturday shift (after FinaliseCount)
 
 **Algorithm:**
 ```javascript
@@ -179,7 +230,7 @@ const suggestedQty = targetQty * bufferMultiplier;
 
 **Purpose:** Bridge between Airtable automation and Google Apps Script
 
-**Trigger:** Airtable Automation button
+**Trigger:** Airtable Automation — manager clicks **Export** button in the Interface during Saturday shift (after GeneratePrepRun)
 
 **Algorithm:**
 ```javascript
@@ -215,7 +266,7 @@ const suggestedQty = targetQty * bufferMultiplier;
 2. `doPost(e)` - Webhook handler for manual triggers
 3. `processPrepRunExportRequests()` - Poll-based trigger (time-driven)
 
-### Unified Web App Router (v4.5)
+### Unified Web App Router (v4.2)
 
 A single deployment serves both the Feedback Form and Recipe Scaler:
 
@@ -275,6 +326,7 @@ if (contentMarker) {
 **Fallback:** If template ID not set or template missing, full programmatic generation.
 
 ### Document Generation Functions
+Functions that build each Google Doc type from Airtable data.
 
 **createOrderingList(doc, staffName, ingredients)**
 ```javascript
@@ -303,6 +355,7 @@ if (contentMarker) {
 ```
 
 ### Slack Integration
+Webhook routing for LIVE and TEST mode notifications.
 
 **Webhook URLs (from Script Properties):**
 - `SLACK_WEBHOOK_GOOCH` - Gooch's channel
@@ -350,6 +403,7 @@ Configure in Google Apps Script → Project Settings → Script Properties
 ---
 
 ## Airtable Schema Details
+*Field definitions for every table in the Sakura Airtable base.*
 
 ### Items Table
 
@@ -465,6 +519,7 @@ Configure in Google Apps Script → Project Settings → Script Properties
 ---
 
 ## Deployment
+*clasp setup, push commands, and which files are excluded from GAS.*
 
 ### clasp Configuration
 
@@ -584,8 +639,10 @@ Stored in `config/airtableautomationURLs` (gitignored)
 ---
 
 ## Error Handling Patterns
+*Retry logic, audit logging, and dry-run support used across all scripts.*
 
 ### Retry with Backoff
+Exponential backoff wrapper for UrlFetchApp calls.
 
 ```javascript
 function fetchWithRetry(url, options, maxRetries = 3) {
@@ -604,6 +661,7 @@ function fetchWithRetry(url, options, maxRetries = 3) {
 ```
 
 ### Audit Logging
+Writes execution metadata and errors to the Audit Log table.
 
 ```javascript
 async function logToAudit(scriptName, status, message, details = {}) {
@@ -624,6 +682,7 @@ async function logToAudit(scriptName, status, message, details = {}) {
 ```
 
 ### Dry Run Mode
+Validates logic and logs planned changes without writing to Airtable.
 
 ```javascript
 function main(options = { dryRun: false }) {
@@ -644,6 +703,7 @@ function main(options = { dryRun: false }) {
 ---
 
 ## Testing
+*Test harness, mode switching, and dry-run validation for safe development.*
 
 ### Test Harness
 
@@ -663,6 +723,7 @@ function testDocGeneration() {
 ```
 
 ### TEST vs LIVE Mode
+Controls Slack routing and is set per export request.
 
 | Aspect | TEST | LIVE |
 |--------|------|------|
@@ -680,6 +741,7 @@ All Airtable scripts support `dryRun: true`:
 ---
 
 ## Extension Points
+*Where and how to add new item types, document types, and integrations.*
 
 ### Adding New Item Types
 
@@ -726,6 +788,7 @@ See `.claude/skills/` for development tools:
 ---
 
 ## Security Considerations
+*Credential storage, input validation, and Airtable rate-limit compliance.*
 
 ### Credential Storage
 - All credentials in Script Properties (not code)
@@ -745,6 +808,7 @@ See `.claude/skills/` for development tools:
 ---
 
 ## Performance Considerations
+*Batch sizes, caching strategies, and GAS execution limits.*
 
 ### Batch Sizes
 - Airtable operations: 50 records
@@ -762,8 +826,10 @@ See `.claude/skills/` for development tools:
 ---
 
 ## Monitoring
+*Audit Log queries and GAS execution logs for diagnosing failures.*
 
 ### Audit Log Queries
+Airtable filter patterns for common monitoring tasks.
 
 **Recent errors:**
 ```
@@ -792,10 +858,10 @@ Calculate: COUNT(Error) / COUNT(*) * 100
 ---
 
 ## Related Documentation
+*Links to companion guides and required-reading patterns.*
 
-- [CLAUDE.md](../CLAUDE.md) - Full system documentation
-- [Quick Start](README-Level1-Basic.md) - Basic user guide
-- [Intermediate](README-Level2-Intermediate.md) - Manager guide
+- [CLAUDE.md](../CLAUDE.md) - System overview and developer guide
+- [STAFF_GUIDE.md](STAFF_GUIDE.md) - Staff quick start
+- [MANAGER_GUIDE.md](MANAGER_GUIDE.md) - Manager guide
+- [AIRTABLE_SCHEMA.md](AIRTABLE_SCHEMA.md) - Complete Airtable base schema
 - [Critical Patterns](solutions/patterns/critical-patterns.md) - Required reading
-- [Solution Library](solutions/) - Searchable problem solutions
-- [Repository Guide](../reference/COMPREHENSIVE_REPOSITORY_GUIDE.md) - External tools overview

@@ -22,10 +22,10 @@ Slack (Team Notifications)
 
 ## The Five Core Automations
 
-Each automation is triggered by a button in Airtable.
+These automations run either on scheduled triggers or are initiated by the manager via **Airtable Interface buttons** during Saturday shift. Staff and managers interact with the system through Interfaces (purpose-built dashboards) — not by opening raw tables.
 
 ### 1. Clear Weekly Count
-**When:** Saturday morning (start of stocktake)
+**When:** Saturday 8:00 AM (automated scheduled trigger — can also be triggered via Interface button)
 **What it does:**
 - Resets the Weekly Counts table
 - Creates placeholder records for all active items
@@ -36,7 +36,7 @@ Each automation is triggered by a button in Airtable.
 - Filters by Item Type: Batch, Sub Recipe, Garnish, Other
 
 ### 2. Finalise Count
-**When:** Monday morning (after stocktake complete)
+**When:** Saturday shift — manager clicks the **Finalise Count** button in the Interface after stock count is complete
 **What it does:**
 - Validates all counts are entered
 - Sets `Confirmed = true` on valid counts
@@ -49,7 +49,7 @@ Each automation is triggered by a button in Airtable.
 - Recipe yields must be defined
 
 ### 3. Generate Prep Run
-**When:** Monday (after finalising count)
+**When:** Saturday shift — manager clicks the **Generate Prep Run** button in the Interface after finalising count
 **What it does:**
 - Finds latest verified stocktake
 - Calculates shortfalls: `Par Level - Current Stock`
@@ -67,7 +67,7 @@ Then Batches Needed = ceil(70 ÷ 25) = 3 batches
 ```
 
 ### 4. Generate Prep Sheet (Webhook Trigger)
-**When:** After "Export" button clicked
+**When:** Saturday shift — manager clicks the **Export** button in the Interface after prep run is generated
 **What it does:**
 - Polls Prep Run Requests table
 - Calls Google Apps Script webhook
@@ -83,8 +83,12 @@ Then Batches Needed = ceil(70 ÷ 25) = 3 batches
 ---
 
 ## Airtable Tables Reference
+*Every table in the system and what it stores.*
+
+> **Note:** These are the underlying data tables. Staff and managers interact with the system through **Airtable Interfaces** — purpose-built dashboards with buttons and filtered views. The tables below are referenced here for troubleshooting and admin configuration.
 
 ### Core Tables
+These tables define your products, recipes, and stock targets.
 
 | Table | Purpose | Key Fields |
 |-------|---------|------------|
@@ -94,6 +98,7 @@ Then Batches Needed = ceil(70 ÷ 25) = 3 batches
 | **Par Levels** | Stock targets | Item Link, Par Qty |
 
 ### Operational Tables
+These tables hold live stocktake, prep run, and ordering data.
 
 | Table | Purpose | Key Fields |
 |-------|---------|------------|
@@ -103,6 +108,7 @@ Then Batches Needed = ceil(70 ÷ 25) = 3 batches
 | **Ingredient Requirements** | Shopping list | Item Link, Total Qty Needed, Supplier |
 
 ### System Tables
+These tables manage exports, suppliers, logging, and feedback.
 
 | Table | Purpose |
 |-------|---------|
@@ -114,8 +120,10 @@ Then Batches Needed = ceil(70 ÷ 25) = 3 batches
 ---
 
 ## Configuration Tasks
+*Common setup changes. Par levels and weekly volumes can be adjusted from the Interface. Adding new items, suppliers, or recipes requires admin access to the raw tables.*
 
 ### Adding a New Item
+Register a new product so it appears in stocktakes and prep runs. *This requires admin access to the raw tables — it cannot be done from the Interface alone.*
 
 1. Add to **Items** table with:
    - Item Name
@@ -133,13 +141,16 @@ Then Batches Needed = ceil(70 ÷ 25) = 3 batches
    - Add ingredients in **Recipe Lines** table
 
 ### Adjusting Par Levels
+Change how much stock the system targets for an item.
 
-1. Go to **Par Levels** table
-2. Find the item
-3. Update Par Qty
-4. Changes take effect on next prep run
+1. Open the **PREP Interface** in Airtable
+2. Find the item and adjust the **Par Qty** value (par levels and weekly volumes are editable from the Interface)
+3. Changes take effect on the next prep run
+
+*For bulk changes or troubleshooting, admins can also edit the Par Levels table directly.*
 
 ### Adding a New Supplier
+Create a supplier record and assign it to an ordering staff member. *This requires admin access to the raw tables.*
 
 1. Add to **Supplier** table:
    - Supplier Name
@@ -148,6 +159,7 @@ Then Batches Needed = ceil(70 ÷ 25) = 3 batches
 2. Link items to supplier in **Items** table
 
 ### Changing Ordering Staff Assignment
+Reassign a supplier so its orders appear on a different staff member's list. *This requires admin access to the raw tables.*
 
 1. Go to **Supplier** table
 2. Change "Ordering Staff" field
@@ -156,6 +168,7 @@ Then Batches Needed = ceil(70 ÷ 25) = 3 batches
 ---
 
 ## Output Documents
+*The four Google Docs generated each prep cycle.*
 
 ### 1. Ingredient Prep List
 **Audience:** Prep team
@@ -195,8 +208,10 @@ This means:
 ---
 
 ## LIVE vs TEST Mode
+*Control whether exports go to the team or to a test channel.*
 
 ### LIVE Mode
+Production mode -- documents and notifications reach the whole team.
 - Documents created in production folder
 - Slack messages sent to team channels:
   - Gooch → Gooch's channel
@@ -204,6 +219,7 @@ This means:
   - Prep → Prep team channel
 
 ### TEST Mode
+Safe sandbox -- all notifications route to the test channel only.
 - Documents created in same folder
 - ALL Slack messages go to test channel only
 - No team notifications
@@ -216,6 +232,7 @@ This means:
 ---
 
 ## Troubleshooting
+*Common issues and how to resolve them.*
 
 ### Export Stuck in "Processing"
 
@@ -304,6 +321,7 @@ The Recipe Scaler is a web app for calculating scaled recipes based on available
 Staff can submit feedback directly from generated documents using the "Have feedback? Submit here" link at the top of each document.
 
 ### Feedback Types
+Choose the category that best describes the issue.
 
 | Type | Use For |
 |------|---------|
@@ -313,6 +331,7 @@ Staff can submit feedback directly from generated documents using the "Have feed
 | **Other** | Anything else |
 
 ### How Feedback Works
+End-to-end flow from staff submission to manager notification.
 
 1. Staff click feedback link in document
 2. Form pre-fills with document context (prep run, doc type, staff role)
@@ -340,19 +359,25 @@ Feedback notifications are sent to the `SLACK_WEBHOOK_EV_TEST` webhook (same as 
 ---
 
 ## Quick Reference
+*At-a-glance schedules and links for day-to-day operations.*
 
 ### Weekly Schedule
+The weekly prep cycle at a glance.
 
 | Day | Action | Who |
 |-----|--------|-----|
-| Saturday AM | Run Clear Weekly Count | Manager |
-| Sat-Sun | Enter stock counts | Staff |
-| Monday AM | Run Finalise Count | Manager |
-| Monday PM | Run Generate Prep Run | Manager |
-| Monday PM | Click Export | Manager |
-| Tue-Fri | Execute prep tasks | Team |
+| Friday 8 AM | ClearPrepData runs (deletes old prep data) | Automatic (scheduled) |
+| Saturday 8 AM | ClearWeeklyCount runs (resets stocktake) | Automatic (scheduled) |
+| Saturday shift | Count stock via the Airtable Interface | Staff |
+| Saturday shift | Finalise Count | Manager |
+| Saturday shift | Generate Prep Run | Manager |
+| Saturday shift | Export sheets + Slack notifications | Manager |
+| Saturday shift | Place orders | Gooch / Sabs |
+| Sun–Mon | Orders arrive, extra ordering if needed | Suppliers / team |
+| Tue–Wed | Orders arrive, prep is done | Team |
 
 ### Key URLs
+Bookmark these for quick access to each platform.
 
 - Airtable Base: Check with admin
 - Google Drive Folder: Check Script Properties
@@ -363,7 +388,7 @@ Feedback notifications are sent to the `SLACK_WEBHOOK_EV_TEST` webhook (same as 
 ## Next Level
 
 For technical details, script internals, and development:
-→ [Deep Dive Guide](README-Level3-DeepDive.md)
+→ [Technical Reference](TECHNICAL_REFERENCE.md)
 
 For basic daily use:
-→ [Quick Start Guide](README-Level1-Basic.md)
+→ [Staff Guide](STAFF_GUIDE.md)

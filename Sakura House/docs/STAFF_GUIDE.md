@@ -23,40 +23,41 @@ The most important thing you need to do is **count stock accurately** on weekend
 Here's what happens each week:
 
 ```
-SATURDAY          SUNDAY            MONDAY MORNING     MONDAY ARVO
-   │                 │                    │                 │
-   ▼                 ▼                    ▼                 ▼
-┌─────────────────────────┐         ┌───────────┐     ┌───────────┐
-│   YOU COUNT STOCK       │    →    │  Someone  │  →  │  System   │
-│   in Airtable           │         │  clicks   │     │  creates  │
-│   (Weekly Counts table) │         │  buttons  │     │  docs &   │
-└─────────────────────────┘         └───────────┘     │  sends    │
-                                                      │  Slack    │
-                                                      └───────────┘
+FRIDAY 8 AM       SATURDAY 8 AM     SATURDAY SHIFT (3:30 PM – 3 AM)
+   │                 │                    │
+   ▼                 ▼                    ▼
+┌───────────┐   ┌───────────┐     ┌──────────────────────────────────┐
+│  System   │   │  System   │     │  YOU COUNT STOCK                 │
+│  clears   │   │  resets   │     │  in Airtable (Weekly Counts)     │
+│  old prep │   │  stocktake│     │                                  │
+│  data     │   │  (auto)   │     │  Manager finalises → system      │
+│  (auto)   │   └───────────┘     │  creates docs & sends Slack      │
+└───────────┘                     │  Ordering also happens now       │
+                                  └──────────────────────────────────┘
 ```
 
-### Your Weekend Task: Counting Stock
+### Your Saturday Shift Task: Counting Stock
 
-1. Open **Airtable** (you should have a link bookmarked)
-2. Go to the **Weekly Counts** table
+1. Open **Airtable** and go to the **Stock Count Interface** (you should have a link bookmarked)
+2. The Interface gives you a clean list of items to count — no need to navigate raw tables
 3. Find each item and enter how much we have
 4. That's it!
 
-Someone else will click the buttons to run the system on Monday.
+The manager will finalise the count and run the system during the same Saturday shift.
 
 ---
 
-## What Happens on Monday
+## What Happens After You Count
 
-After your counts are in, the system:
+Once the team finishes counting during Saturday shift, the manager runs the system:
 
-1. Looks at what we have (your stock counts)
-2. Compares to what we need (par levels)
+1. Finalises your stock counts (locks them in)
+2. Compares what we have to what we need (par levels)
 3. Calculates the gap
 4. Creates prep tasks and ingredient lists
-5. Sends everything to Slack
+5. Exports everything to Google Docs and sends Slack notifications
 
-**You don't need to do any of this** - it happens automatically once someone clicks the buttons.
+**You don't need to do any of this** — the manager handles it during the Saturday shift. By Sunday morning, all lists are ready.
 
 ---
 
@@ -76,6 +77,8 @@ All documents are Google Docs. Click the link in Slack to open them.
 ---
 
 ## Two Handy Tools
+
+*These are built into your prep documents to help you on the spot.*
 
 ### 1. Feedback Button (on every document)
 
@@ -101,25 +104,29 @@ Look for **"Scale this recipe"** link in Batching List documents.
 
 ## Where to Find Stuff in Airtable
 
-| You want to... | Go to this table |
-|----------------|------------------|
-| Enter stock counts | **Weekly Counts** |
-| See what prep is needed | **Prep Tasks** |
-| See ingredient requirements | **Ingredient Requirements** |
-| Find the generated docs | **Prep Runs** → click "Link to Prep Guides" |
+*You'll use the Airtable Interface for almost everything — it's a clean dashboard, not the raw tables.*
+
+| You want to... | Where to go |
+|----------------|-------------|
+| Enter stock counts | **Stock Count Interface** (your main dashboard) |
+| See what prep is needed | Check Slack for your lists, or the Interface |
+| See ingredient requirements | Check Slack, or the Interface |
+| Find the generated docs | Slack messages have direct links; also available in the Interface |
 
 ---
 
 ## If Something Goes Wrong
 
+*Common hiccups and how to fix them quickly.*
+
 ### "I counted something wrong"
-No problem - just update it in Weekly Counts. As long as it's before Monday morning when someone clicks "Finalise Count", you're fine.
+No problem — just update it in the Stock Count Interface. As long as it's before the manager clicks "Finalise Count" during Saturday shift, you're fine.
 
 ### "The numbers on my list look off"
-The system compares your counts to our par levels. If something seems wrong, check the **Par Levels** table - that's what sets our targets.
+The system compares your counts to our par levels. If something seems wrong, ask your manager to check the par level settings — those set our targets.
 
 ### "I didn't get a Slack message"
-Ask your manager to check the **Prep Runs** table. There's a field called "Export Request State" - if it says "FAILED", something went wrong and they'll need to sort it out.
+Ask your manager to check the export status in the Interface. If it shows "FAILED", something went wrong and they'll need to sort it out.
 
 ### "Can we run it again?"
 Yes. Exporting the same prep run again just creates new documents. Nothing breaks.
@@ -128,17 +135,21 @@ Yes. Exporting the same prep run again just creates new documents. Nothing break
 
 ## Quick Reference Card
 
+*Print this out or screenshot it for your first week.*
+
 ```
 ┌────────────────────────────────────────────────────────────┐
 │                    YOUR WEEKLY CHECKLIST                   │
 ├────────────────────────────────────────────────────────────┤
 │                                                            │
-│  WEEKEND:                                                  │
+│  SATURDAY SHIFT:                                           │
 │  □ Count stock                                             │
-│  □ Enter counts in Airtable → Weekly Counts                │
+│  □ Enter counts via the Airtable Interface                  │
 │                                                            │
-│  MONDAY ONWARDS:                                           │
+│  SATURDAY NIGHT / SUNDAY:                                  │
 │  □ Check Slack for your prep list or ordering list         │
+│                                                            │
+│  TUESDAY–WEDNESDAY:                                        │
 │  □ Follow the documents                                    │
 │  □ Use feedback link if something's wrong                  │
 │                                                            │
@@ -153,7 +164,7 @@ Totally normal - it's new! Here's what to do:
 
 1. **Ask a teammate** who's been using it
 2. **Ask your manager** for a quick walkthrough
-3. **Read the next level guide:** [Intermediate Guide](README-Level2-Intermediate.md) has more detail
+3. **Read the next level guide:** [Manager Guide](MANAGER_GUIDE.md) has more detail
 
 The system looks complicated but your job is simple: **count accurately, and check Slack for your lists**.
 
