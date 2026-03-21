@@ -2,8 +2,9 @@
  * Waratah_ValidateStockCount.gs
  *
  * Airtable Automation Script — runs INSIDE Airtable (not GAS).
- * Validates a completed stock count session: auto-fills blank quantities to 0,
- * flags outliers vs previous counts, and updates session status.
+ * Validates a completed stock count session: flags items with no tallies entered
+ * as "not counted" (blocks validation), flags outliers vs previous counts, and
+ * updates session status. Reads the "Total On Hand" formula field (sum of 5 area tallies).
  *
  * Trigger: Automation on Count Session Status change to "Completed"
  * Inputs:  sessionId (string, auto-detects latest "Completed" session if omitted), dryRun (boolean, defaults false)
@@ -45,7 +46,6 @@ const CONFIG = {
 
   // Stock Counts fields
   countItemField: "Item",
-  countLocationField: "Location",
   countSessionField: "Count Session",
   countQuantityField: "Total On Hand",
   countPreviousField: "Previous Count",
@@ -419,7 +419,7 @@ const main = async () => {
     if (notesField) {
       const noteLines = [
         `Validated: ${formatSydneyTimestamp_(new Date())}`,
-        `Valid: ${validCount}, Auto-filled: ${autoFilledZero.length}, Negative: ${negativeQty.length}, Outliers: ${outliers.length}`,
+        `Valid: ${validCount}, Not Counted: ${notCounted.length}, Negative: ${negativeQty.length}, Outliers: ${outliers.length}`,
       ];
       if (outliers.length > 0) {
         noteLines.push("");
