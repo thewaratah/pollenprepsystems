@@ -37,6 +37,7 @@ The Waratah PREP system uses a two-script architecture:
 - `Waratah_InitStockCount.gs` - Initialize stock count session (create Count Session record + one Stock Count placeholder per Core Order item)
 - `Waratah_ValidateStockCount.gs` - Validate stock count data before finalisation
 - `Waratah_GenerateStockOrders.gs` - Generate stock orders from stocktake (writes to Stock Orders table; idempotent — deletes existing orders before regenerating)
+- `Waratah_CompleteStockCount.gs` - Button-triggered: advances "In Progress" session to "Completed" (pre-flight checks all items have tallies; triggers ValidateStockCount automation)
 - `Waratah_ExportOrderingDoc.gs` - Trigger ordering doc export via GAS polling (sets "Ordering Export State" = REQUESTED on Count Sessions)
 
 **2. Google Apps Script** (run in GAS environment)
@@ -77,8 +78,8 @@ The Waratah PREP system uses a two-script architecture:
 **Stock Count Pipeline:**
 1. `Waratah_InitStockCount.gs` → Creates Count Session + ~59 placeholder Stock Count records (one per Core Order item)
 2. Evan walks each area, enters counts in the corresponding tally column (all ~59 items visible in one sorted list)
-3. Evan marks session "Completed"
-4. `Waratah_ValidateStockCount.gs` → Auto-fills blanks to 0, flags outliers, sets status to "Validated" or "Needs Review"
+3. `Waratah_CompleteStockCount.gs` → Button-triggered: pre-flight checks all items have tallies, advances status to "Completed"
+4. `Waratah_ValidateStockCount.gs` → Flags uncounted items and outliers, sets status to "Validated" or "Needs Review"
 5. `Waratah_GenerateStockOrders.gs` → Aggregates counts, looks up par levels + prep usage, creates Stock Order records
 6. `Waratah_ExportOrderingDoc.gs` → Triggers ordering doc export via GAS polling
 
@@ -102,6 +103,7 @@ Waratah_FinaliseCount.gs
 Waratah_GeneratePrepRun.gs
 Waratah_GeneratePrepSheet_TimeBasedPolling.gs
 Waratah_InitStockCount.gs
+Waratah_CompleteStockCount.gs
 Waratah_ValidateStockCount.gs
 Waratah_GenerateStockOrders.gs
 Waratah_ExportOrderingDoc.gs
@@ -142,6 +144,7 @@ All Waratah scripts use the `Waratah_` prefix to differentiate from Sakura House
 | Generate prep run | `Waratah_GeneratePrepRun.gs` | Airtable |
 | Mark for export | `Waratah_GeneratePrepSheet_TimeBasedPolling.gs` | Airtable |
 | Initialize stock count | `Waratah_InitStockCount.gs` | Airtable |
+| Complete stock count | `Waratah_CompleteStockCount.gs` | Airtable |
 | Validate stock count | `Waratah_ValidateStockCount.gs` | Airtable |
 | Generate stock orders | `Waratah_GenerateStockOrders.gs` | Airtable |
 | Trigger ordering export | `Waratah_ExportOrderingDoc.gs` | Airtable |
@@ -233,6 +236,23 @@ RECIPE_SCALER_URL=<DEPLOYED_WEB_APP_URL>
 ---
 
 ## Recent Changes
+
+### 2026-03-21 — CompleteStockCount Button Script
+
+**`Waratah_CompleteStockCount.gs` — New Airtable automation script:**
+- Button-triggered script that advances "In Progress" Count Session to "Completed"
+- Pre-flight guard: checks all Stock Count records have `Total On Hand` populated (refuses to complete if any items have no tallies)
+- Triggers the existing `ValidateStockCount` automation (which fires on Status → "Completed")
+- Follows existing script patterns: CONFIG, helpers, audit log, output.set()
+
+**`.claspignore` updated:**
+- Added `Waratah_CompleteStockCount.gs` to exclusion list
+
+**Airtable setup required:**
+- Create a button field or automation on Count Sessions to run this script
+- Script auto-detects the latest "In Progress" session (no input required)
+
+---
 
 ### 2026-03-21 — Stock Count Location Tally Fields (5-Area Model)
 
