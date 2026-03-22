@@ -55,6 +55,7 @@ These create maintenance debt or degrade performance.
 | Functions >50 lines | Flag for decomposition — not a blocker |
 | Missing Slack error notification | Functions that fail silently without notifying ops |
 | Duplicate logic | Same logic in multiple places that should be extracted |
+| Missing parity check | Changed file is a Tier 1/2 pair in `docs/SHARED_PATTERNS_REGISTRY.md` but `parity-check-agent` was not dispatched — note in report as advisory |
 
 ### P3 — Suggestions
 Non-blocking style and architecture notes.

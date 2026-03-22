@@ -13,6 +13,9 @@ Waratah_CompleteStockCount.gs
 # Debug utilities (manual testing only — not for production)
 Debug.gs
 
+# Test harness (excluded from GAS deployment)
+GoogleDocsPrepSystem_TestHarness.gs
+
 # Python scripts
 *.py
 

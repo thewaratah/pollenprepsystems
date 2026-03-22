@@ -134,6 +134,16 @@ bash sync-airtable-scripts-to-drive.sh
 - `Project not found` — wrong Script ID in `.clasp.json`
 - `Duplicate function name` (Waratah) — `Waratah_*.gs` was not excluded by `.claspignore`
 
+## Cross-Venue Parity Advisory
+
+After deploying changes to a Tier 1 or Tier 2 file (see `docs/SHARED_PATTERNS_REGISTRY.md`):
+
+- [ ] Check: does the counterpart venue need the same change?
+- [ ] If yes: run `/parity` to verify alignment, then deploy the counterpart venue
+- [ ] If no (venue-specific change): no action needed
+
+This is advisory, not a gate — single-venue hotfixes should never be blocked by parity analysis. But all bug fixes to shared patterns should be backported promptly.
+
 ## GAS Post-Deployment Verification
 
 Run these after every clasp push:
