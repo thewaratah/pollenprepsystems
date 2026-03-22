@@ -4,7 +4,7 @@
  * Airtable Automation Script — runs INSIDE Airtable (not GAS).
  * Creates a new Count Session and one Stock Count placeholder record
  * per active Core Order item (no location breakdown — one record per item).
- * Archives sessions older than 4 weeks.
+ * Wipes all existing Stock Count and Stock Order records, then creates fresh placeholders.
  *
  * Trigger: Manual button or scheduled automation (Monday AM)
  * Inputs:  dryRun (boolean, defaults false), countedBy (string, defaults "Evan")
@@ -52,7 +52,7 @@ const CONFIG = {
   // Stock Counts fields
   countItemField: "Item",
   countSessionField: "Count Session",
-  countQuantityField: "Quantity",
+  countQuantityField: "Total On Hand",
   countPreviousField: "Previous Count",
   countNeedsReviewField: "Needs Review",
 
@@ -69,8 +69,6 @@ const CONFIG = {
 
   // Behaviour
   batchSize: 50,
-  archiveWeeks: 4,
-  allowedStatuses: ["Not Started", "In Progress"],
 };
 
 // ── HELPERS ─────────────────────────────────────────────────────────
@@ -201,40 +199,13 @@ const main = async () => {
   console.log("");
 
   // ── Phase 2: Check for existing open session ──
-  console.log("Phase 2: Checking for open sessions...");
+  console.log("Phase 2: Loading existing sessions...");
 
   const existingSessions = await sessionsTable.selectRecordsAsync({
     fields: [CONFIG.sessionDateField, CONFIG.sessionStatusField, CONFIG.sessionStockCountsField],
   });
 
-  const openSessions = existingSessions.records.filter(r => {
-    const status = r.getCellValue(CONFIG.sessionStatusField);
-    const statusName = status?.name || "";
-    return CONFIG.allowedStatuses.includes(statusName) || statusName === "";
-  });
-
-  if (openSessions.length > 0) {
-    const openDate = openSessions[0].getCellValue(CONFIG.sessionDateField);
-    const msg = `Found ${openSessions.length} open session(s). Most recent: ${openDate || "no date"}. Complete or archive existing sessions before creating a new one.`;
-    console.log(`  BLOCKED: ${msg}`);
-
-    if (!dryRun && auditLogTable) {
-      await writeAuditLog_(auditLogTable, {
-        scriptName: CONFIG.scriptName,
-        status: "WARNING",
-        message: msg,
-        user: countedByInput,
-        executionTime: parseFloat(((Date.now() - startTime) / 1000).toFixed(2)),
-        configUsed: JSON.stringify({ dryRun, countedByInput }, null, 2),
-      });
-    }
-
-    output.set("status", "blocked");
-    output.set("message", msg);
-    return;
-  }
-
-  console.log("  No open sessions found");
+  console.log(`  Found ${existingSessions.records.length} existing session(s)`);
   console.log("");
 
   // ── Phase 3: Fetch Core Order items ──
@@ -389,61 +360,57 @@ const main = async () => {
   }
   console.log("");
 
-  // ── Phase 7: Archive old sessions ──
-  console.log("Phase 7: Archiving old sessions...");
-
-  const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - (CONFIG.archiveWeeks * 7));
-  const cutoffStr = cutoffDate.toISOString().split("T")[0];
+  // ── Phase 7: Wipe Stock Counts & Stock Orders tables ──
+  // Deletes ALL records except the placeholders just created in Phase 6.
+  // Sessions themselves are kept for history.
+  console.log("Phase 7: Wiping previous Stock Counts & Stock Orders...");
 
   const ordersTable = safeGetTable_(CONFIG.stockOrdersTableName);
-  let archivedSessions = 0;
-  let archivedCounts = 0;
-  let archivedOrders = 0;
+  let cleanedCounts = 0;
+  let cleanedOrders = 0;
 
-  // Need Stock Orders field for cleanup
-  const sessionOrdersField = safeField_(sessionsTable, "Stock Orders");
-
-  for (const session of existingSessions.records) {
-    const dateVal = session.getCellValue(CONFIG.sessionDateField);
-    if (!dateVal || dateVal >= cutoffStr) continue;
-
-    const status = session.getCellValue(CONFIG.sessionStatusField);
-    const statusName = status?.name || "";
-    // Only archive completed sessions
-    if (statusName !== "Orders Generated" && statusName !== "Completed") continue;
-
-    // Delete linked stock counts
-    const linkedCounts = session.getCellValue(CONFIG.sessionStockCountsField);
-    if (linkedCounts && linkedCounts.length > 0) {
-      if (!dryRun) {
-        await batchDelete_(countsTable, linkedCounts.map(l => l.id));
-      }
-      archivedCounts += linkedCounts.length;
-    }
-
-    // Delete linked stock orders
-    if (ordersTable && sessionOrdersField) {
-      const linkedOrders = session.getCellValue("Stock Orders");
-      if (linkedOrders && linkedOrders.length > 0) {
-        if (!dryRun) {
-          await batchDelete_(ordersTable, linkedOrders.map(l => l.id));
-        }
-        archivedOrders += linkedOrders.length;
+  // Build set of record IDs we just created (to protect them from deletion)
+  const newPlaceholderIds = new Set();
+  if (!dryRun) {
+    // Re-query to get the IDs of records linked to the new session
+    const newSessionCounts = await countsTable.selectRecordsAsync({ fields: [CONFIG.countSessionField] });
+    for (const rec of newSessionCounts.records) {
+      const session = rec.getCellValue(CONFIG.countSessionField);
+      if (session && session.some(s => s.id === sessionRecordId)) {
+        newPlaceholderIds.add(rec.id);
       }
     }
-
-    // Delete the session itself
-    if (!dryRun) {
-      await sessionsTable.deleteRecordAsync(session.id);
-    }
-    archivedSessions++;
   }
 
-  if (archivedSessions > 0) {
-    console.log(`  ${dryRun ? "[DRY RUN] Would archive" : "Archived"} ${archivedSessions} old sessions (${archivedCounts} counts, ${archivedOrders} orders)`);
+  // Delete all Stock Count records except the new placeholders
+  const allCounts = await countsTable.selectRecordsAsync({ fields: [] });
+  const countIdsToDelete = allCounts.records
+    .filter(r => !newPlaceholderIds.has(r.id))
+    .map(r => r.id);
+
+  if (countIdsToDelete.length > 0) {
+    if (!dryRun) {
+      await batchDelete_(countsTable, countIdsToDelete);
+    }
+    cleanedCounts = countIdsToDelete.length;
+  }
+
+  // Delete ALL Stock Order records
+  if (ordersTable) {
+    const allOrders = await ordersTable.selectRecordsAsync({ fields: [] });
+    const orderIdsToDelete = allOrders.records.map(r => r.id);
+    if (orderIdsToDelete.length > 0) {
+      if (!dryRun) {
+        await batchDelete_(ordersTable, orderIdsToDelete);
+      }
+      cleanedOrders = orderIdsToDelete.length;
+    }
+  }
+
+  if (cleanedCounts > 0 || cleanedOrders > 0) {
+    console.log(`  ${dryRun ? "[DRY RUN] Would delete" : "Deleted"} ${cleanedCounts} stock counts + ${cleanedOrders} stock orders`);
   } else {
-    console.log("  No sessions older than 4 weeks to archive");
+    console.log("  No previous stock counts or orders to clean up");
   }
   console.log("");
 
@@ -459,7 +426,7 @@ const main = async () => {
   console.log(`Core Order Items: ${coreOrderItems.length}`);
   console.log(`Placeholders Created: ${totalPlaceholders}`);
   console.log(`Previous Counts Loaded: ${previousCountMap.size}`);
-  console.log(`Archived Sessions: ${archivedSessions}`);
+  console.log(`Cleaned Up: ${cleanedCounts} stock counts + ${cleanedOrders} stock orders`);
   console.log(`Execution Time: ${executionTime}s`);
   console.log(`Mode: ${dryRun ? "DRY RUN" : "LIVE"}`);
   console.log("");
@@ -476,7 +443,7 @@ const main = async () => {
         `Core Order Items: ${coreOrderItems.length}`,
         `Placeholders: ${totalPlaceholders}`,
         `Previous Counts Loaded: ${previousCountMap.size}`,
-        `Archived: ${archivedSessions} sessions, ${archivedCounts} counts`,
+        `Cleaned Up: ${cleanedCounts} stock counts + ${cleanedOrders} stock orders`,
       ].join("\n"),
       user: countedByInput,
       executionTime: parseFloat(executionTime),
@@ -489,7 +456,8 @@ const main = async () => {
   output.set("sessionId", sessionRecordId || "(dry run)");
   output.set("itemCount", coreOrderItems.length);
   output.set("placeholderCount", totalPlaceholders);
-  output.set("archivedSessions", archivedSessions);
+  output.set("cleanedCounts", cleanedCounts);
+  output.set("cleanedOrders", cleanedOrders);
   output.set("executionTime", executionTime);
 };
 

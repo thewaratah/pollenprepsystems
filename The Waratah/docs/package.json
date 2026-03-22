@@ -1,0 +1,14 @@
+{
+  "name": "waratah-docs-deploy",
+  "version": "1.0.0",
+  "description": "Convert Waratah markdown docs to Google Docs and upload to Drive",
+  "private": true,
+  "scripts": {
+    "deploy": "node deploy-docs-to-drive.js"
+  },
+  "dependencies": {
+    "docx": "^8.5.0",
+    "googleapis": "^134.0.0",
+    "markdown-it": "^14.0.0"
+  }
+}

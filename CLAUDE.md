@@ -48,6 +48,9 @@
 | `/scaler [task]` | Recipe Scaler GAS + UI |
 | `/gas-docs [task]` | Google Docs formatting in GAS — DocumentApp API, hybrid template engine, insertXxx_/appendXxx_ helpers |
 | `/audit [scope]` | Cross-venue Airtable schema comparison via MCP (defaults to Items + Recipes tables) |
+| `/update-scripts-docs [what changed]` | Update Sakura Advanced Script & Automation docs after script changes |
+| `/push-advanced-docs` | Push Sakura Advanced Script & Automation docs to Google Drive (manual only) |
+| `/push-waratah-advanced-docs` | Push Waratah Advanced Script & Automation docs to Google Drive (manual only) |
 
 ---
 

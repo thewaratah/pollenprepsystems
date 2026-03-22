@@ -19,7 +19,7 @@ Production instance of the PREP system for The Waratah venue.
 - Script Backups (Airtable + GAS): `1FN-IyBCXj1r_zDNunpZzR-8u8DRSSiSp` - https://drive.google.com/drive/folders/1FN-IyBCXj1r_zDNunpZzR-8u8DRSSiSp
 - Archive: (to be configured)
 
-**Staff Guide:** [`docs/guides/waratah-staff-guide.md`](docs/guides/waratah-staff-guide.md) — plain-English guide for bar staff (copy-paste into Word/Google Docs for distribution)
+**Help Docs (Google Drive):** https://drive.google.com/drive/folders/1-j2gtc1JJ93XueDQYmnJ9HdSkgPycrii
 
 ---
 
@@ -34,7 +34,7 @@ The Waratah PREP system uses a two-script architecture:
 - `Waratah_FinaliseCount.gs` - Validate stocktake
 - `Waratah_GeneratePrepRun.gs` - Generate prep tasks
 - `Waratah_GeneratePrepSheet_TimeBasedPolling.gs` - Mark exports as REQUESTED
-- `Waratah_InitStockCount.gs` - Initialize stock count session (create Count Session record + one Stock Count placeholder per Core Order item)
+- `Waratah_InitStockCount.gs` - Initialize stock count session (create Count Session record + one Stock Count placeholder per Core Order item; cleans up all Stock Count & Stock Order records from previous sessions)
 - `Waratah_ValidateStockCount.gs` - Validate stock count data before finalisation
 - `Waratah_GenerateStockOrders.gs` - Generate stock orders from stocktake (writes to Stock Orders table; idempotent — deletes existing orders before regenerating; auto-sets Ordering Export State = REQUESTED to trigger doc export)
 - `Waratah_CompleteStockCount.gs` - Button-triggered: advances "In Progress" session to "Completed" (pre-flight checks all items have tallies; triggers ValidateStockCount automation)
@@ -76,7 +76,7 @@ The Waratah PREP system uses a two-script architecture:
 **`Total On Hand` formula:** Returns BLANK() when all tallies are empty (distinguishes "not counted" from "counted, total is 0"). Scripts read this field instead of the legacy `Quantity` field.
 
 **Stock Count Pipeline:**
-1. `Waratah_InitStockCount.gs` → Creates Count Session + ~59 placeholder Stock Count records (one per Core Order item)
+1. `Waratah_InitStockCount.gs` → Creates Count Session + ~59 placeholder Stock Count records (one per Core Order item). Cleans up all Stock Count and Stock Order records from previous sessions (sessions themselves are kept for history).
 2. Evan walks each area, enters counts in the corresponding tally column (all ~59 items visible in one sorted list)
 3. `Waratah_CompleteStockCount.gs` → Button-triggered: pre-flight checks all items have tallies, advances status to "Completed"
 4. `Waratah_ValidateStockCount.gs` → Flags uncounted items and outliers, sets status to "Validated" or "Needs Review"
@@ -216,7 +216,8 @@ RECIPE_SCALER_URL=<DEPLOYED_WEB_APP_URL>
 - Review and optimize after first month
 
 ### Staff
-- Stock count + ordering: **Evan** (sole operator — combined ordering doc replaces per-staff Andie/Blade system)
+- Stock count: **Evan** (runs bar stock count, validates, triggers ordering pipeline)
+- Ordering: **Andie** (alcohol + prep pantry suppliers), **Blade** (fruit & veg, prep pantry, pantry staples) — prep-sourced items appear in their own sections on the combined ordering doc
 - Prep Team Lead: TBD
 - Manager: TBD
 
@@ -236,6 +237,80 @@ RECIPE_SCALER_URL=<DEPLOYED_WEB_APP_URL>
 ---
 
 ## Recent Changes
+
+### 2026-03-22 — Ordering Doc: Removed "Order (Prep & Stock Count)" / "Order (Prep)" Prefixes
+
+**`GoogleDocsPrepSystem.gs` — `exportCombinedOrderingDoc_()` updated:**
+- Was: `Maidenii DRY Vermouth 750ml 16%  |  Order (Prep & Stock Count): 1x Bottles`
+- Now: `Maidenii DRY Vermouth 750ml 16%  |  1x Bottles`
+- Removed `"Order (Prep & Stock Count): "` prefix from bar stock order lines (supplier-grouped + no-supplier)
+- Removed `"Order (Prep): "` prefix from all prep sections (Andie, Blade, prep-only, no-supplier within staff sections)
+- Bold+underline styling still applies to the quantity portion (e.g., `1x Bottles`)
+- All 7 line-format locations updated across `exportCombinedOrderingDoc_()` and `renderStaffPrepSection_()`
+
+---
+
+### 2026-03-22 — Andie's & Blade's Orders Sections in Combined Ordering Doc
+
+**`GoogleDocsPrepSystem.gs` — `exportCombinedOrderingDoc_()` updated (deployed via clasp push):**
+- Prep-only items from Ingredient Requirements are now split by `Ordering Staff (Static)` field into **Andie**, **Blade**, and **Other** buckets
+- Items assigned to **Andie** appear in **"ANDIE'S ORDERS (from Prep Count)"** — supplier-grouped, bold+underline on quantities
+- Items assigned to **Blade** appear in **"BLADE'S ORDERS (from Prep Count)"** — same format
+- Items already in the stock count (Core Order / Bar Stock items) are automatically excluded from both sections — no double-ordering
+- Remaining prep-only items (no staff assignment) stay in "PREP-ONLY ITEMS"
+- All sections show quantity only (no `"Order (Prep)"` or `"Order (Prep & Stock Count)"` prefix)
+- Refactored: shared `renderStaffPrepSection_()` and `buildSupplierGroups_()` helpers eliminate code duplication
+- Slack notification: `X suppliers | Y Andie items | Z Blade items | W prep-only items`
+
+**Ordering doc layout is now 6 sections:**
+1. Supplier-grouped bar stock orders (from Stock Count)
+2. ITEMS BELOW PAR — NO SUPPLIER (stock count items with no supplier)
+3. ANDIE'S ORDERS (from Prep Count) — supplier-grouped
+4. BLADE'S ORDERS (from Prep Count) — supplier-grouped
+5. PREP-ONLY ITEMS (remaining unassigned prep items)
+6. Empty state (if nothing to show)
+
+**No Airtable changes required:**
+- `Ordering Staff (Static)` field already exists on Ingredient Requirements and is populated by `Waratah_GeneratePrepRun.gs`
+
+**Key note for future sessions:**
+- Staff ordering sections are driven by `Ordering Staff (Static)` on Ingredient Requirements — to add a new staff member's section, extend the splitting logic and add a `renderStaffPrepSection_()` call
+- The `orderingStaff` value is a lookup chain (Item → Supplier → Ordering Staff), consistent per item
+- Items in the bar stock count (Core Order = true, Bar Stock = true) never appear in staff prep sections
+
+---
+
+### 2026-03-22 — Ordering Doc Line Format Simplified
+
+**`GoogleDocsPrepSystem.gs` — Ordering doc output format changed (deployed via clasp push):**
+- Was: `Item Name | On Hand: X | Par: Y | Prep: Z | Order: N`
+- Now: `Item Name | Nx Bottles` (prefix labels subsequently removed — see 2026-03-22 entry above)
+- Removed On Hand, Par, and Prep columns from ordering doc line items
+- Unit display: ml-based items show "x Bottles" (converted), other units (case, keg) show their original unit label
+- Applied to all ordering sections: supplier-grouped bar stock, no-supplier items, staff prep, and prep-only items
+- Bold styling on the quantity portion preserved
+
+**Key note for future sessions:**
+- Ordering doc lines now show only item name and final order quantity — no prefix labels, no intermediate calculation columns
+
+---
+
+### 2026-03-21 — InitStockCount: Tally Field Migration + Phase 7 Rewrite
+
+**`Waratah_InitStockCount.gs` — `countQuantityField` updated:**
+- Changed from `"Quantity"` to `"Total On Hand"` — aligns with the tally fields migration (ValidateStockCount and GenerateStockOrders were already updated; InitStockCount was missed)
+
+**`Waratah_InitStockCount.gs` — Phase 7 rewritten:**
+- Was "Archive old sessions" (deleted sessions + their counts/orders older than 4 weeks; `archiveWeeks` config)
+- Now "Clean up previous Stock Counts & Stock Orders" — deletes ALL Stock Count and Stock Order records from ALL previous sessions on every init run. Sessions themselves are kept for history.
+- `archiveWeeks` config removed
+- Session query now includes "Stock Orders" field (was missing, needed for cleanup)
+
+**Key note for future sessions:**
+- InitStockCount no longer archives/deletes sessions — it only deletes child records (Stock Counts + Stock Orders) from previous sessions
+- There is no `archiveWeeks` config — cleanup is unconditional on every run
+
+---
 
 ### 2026-03-21 — Auto-Export: GenerateStockOrders Now Triggers Ordering Doc
 
@@ -803,6 +878,32 @@ This uploads the 7 Airtable-only scripts + `GoogleDocsPrepSystem.gs` as .txt fil
 
 ---
 
+## Documentation
+*Staff guides, technical references, and schema docs — all synced to Google Drive as Google Docs.*
+
+| Document | Audience | Purpose |
+|----------|----------|---------|
+| [SYSTEM_OVERVIEW.md](docs/SYSTEM_OVERVIEW.md) | All staff | System overview, weekly cycle, what you'll get each week |
+| [PREP_SHEET_WEEKLY_COUNT_GUIDE.md](docs/PREP_SHEET_WEEKLY_COUNT_GUIDE.md) | Bar staff | How to read prep docs, Recipe Scaler, feedback |
+| [STOCK_COUNT_ORDERING_GUIDE.md](docs/STOCK_COUNT_ORDERING_GUIDE.md) | Evan, management | Stock counting, ordering pipeline, formula, troubleshooting |
+| [TECHNICAL_REFERENCE.md](docs/TECHNICAL_REFERENCE.md) | Developers | Script internals, algorithms, deployment, config |
+| [AIRTABLE_SCHEMA.md](docs/AIRTABLE_SCHEMA.md) | Developers | Complete Airtable base schema (15 tables) |
+
+**Google Drive (Help Docs):** https://drive.google.com/drive/folders/1-j2gtc1JJ93XueDQYmnJ9HdSkgPycrii
+
+### Deploy Staff Docs to Google Drive
+
+Run after updating any documentation to sync markdown → Google Docs:
+
+```bash
+cd "The Waratah/docs"
+node deploy-docs-to-drive.js
+```
+
+Converts all 5 docs to `.docx` and uploads/overwrites them in the shared Google Drive Help Docs folder. Uses service account `claude-sheets-access@quick-asset-465310-h5.iam.gserviceaccount.com`.
+
+---
+
 ## Support
 
 **Technical Issues:** Refer to [main CLAUDE.md](../CLAUDE.md)
@@ -811,4 +912,4 @@ This uploads the 7 Airtable-only scripts + `GoogleDocsPrepSystem.gs` as .txt fil
 
 ---
 
-*Last Updated: 2026-03-21*
+*Last Updated: 2026-03-22*

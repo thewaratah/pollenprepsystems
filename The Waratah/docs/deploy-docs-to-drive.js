@@ -2,7 +2,7 @@
 /**
  * deploy-docs-to-drive.js
  *
- * Converts Sakura House markdown docs to .docx (pure Node.js),
+ * Converts Waratah markdown docs to .docx (pure Node.js),
  * then uploads/overwrites them as Google Docs in a Drive folder.
  *
  * Usage:  node deploy-docs-to-drive.js
@@ -42,33 +42,37 @@ const DOCX_DIR = path.join(DOCS_DIR, "docx files");
 // Folder targets — select via CLI arg: node deploy-docs-to-drive.js [staff|advanced|all]
 const TARGETS = {
   staff: {
-    folderId: "12BQJ48X_9BXOSOWpY7oY_tv4VjKbJls5",
+    folderId: "1-j2gtc1JJ93XueDQYmnJ9HdSkgPycrii",
     sourceDir: DOCS_DIR,
     files: [
-      "STAFF_GUIDE.md",
-      "MANAGER_GUIDE.md",
-      "NEW_STARTER_WELCOME.md",
-      "TROUBLESHOOTING.md",
+      "SYSTEM_OVERVIEW.md",
+      "PREP_SHEET_WEEKLY_COUNT_GUIDE.md",
+      "STOCK_COUNT_ORDERING_GUIDE.md",
+      "TECHNICAL_REFERENCE.md",
+      "AIRTABLE_SCHEMA.md",
     ],
-    label: "Staff & Manager Docs",
+    label: "Waratah Staff & Manager Docs",
   },
   advanced: {
-    folderId: "1KVJO13jJuVHv96wSTim-y5wTozBAxlj3",
+    folderId: "1xi66rtb42rBGp-slBuIl2uPXqY2h-cQ5",
     sourceDir: path.join(DOCS_DIR, "Advanced Script & Automation"),
     files: [
       "OVERVIEW.md",
-      "ClearPrepData.md",
-      "ClearWeeklyCount.md",
-      "FinaliseCount.md",
-      "GeneratePrepRun.md",
-      "GeneratePrepSheet.md",
+      "Waratah_InitStockCount.md",
+      "Waratah_ValidateStockCount.md",
+      "Waratah_ClearWeeklyCount.md",
+      "Waratah_FinaliseCount.md",
+      "Waratah_GeneratePrepRun.md",
+      "Waratah_GeneratePrepSheet.md",
+      "Waratah_GenerateStockOrders.md",
+      "Waratah_ExportOrderingDoc.md",
       "GoogleDocsPrepSystem.md",
       "FeedbackForm.md",
       "RecipeScaler.md",
       "EDITING_GUIDE.md",
       "WORKFLOWS.md",
     ],
-    label: "Advanced Script & Automation Docs",
+    label: "Waratah Advanced Script & Automation Docs",
   },
 };
 
@@ -394,6 +398,8 @@ function convertMarkdownToDocx(markdown) {
   });
 }
 
+// --- Main ---
+
 // --- Drive upload helper ---
 
 async function uploadToFolder(drive, folderId, docxFiles) {
@@ -444,7 +450,6 @@ async function main() {
     fs.mkdirSync(DOCX_DIR, { recursive: true });
   }
 
-  // Authenticate once
   console.log("Authenticating with Google Drive...");
   const auth = new google.auth.GoogleAuth({
     keyFile: SERVICE_ACCOUNT_KEY,
@@ -456,7 +461,6 @@ async function main() {
     const target = TARGETS[targetKey];
     console.log(`\n=== ${target.label} ===`);
 
-    // Convert markdown to docx
     console.log("Converting markdown to docx...");
     const docxFiles = [];
     for (const mdFile of target.files) {
@@ -480,7 +484,6 @@ async function main() {
       continue;
     }
 
-    // Upload to Drive
     console.log("Uploading to Google Drive...");
     await uploadToFolder(drive, target.folderId, docxFiles);
   }

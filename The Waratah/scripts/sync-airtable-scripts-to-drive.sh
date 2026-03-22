@@ -25,6 +25,8 @@ AIRTABLE_SCRIPTS=(
   "Waratah_InitStockCount.gs"
   "Waratah_ValidateStockCount.gs"
   "Waratah_GenerateStockOrders.gs"
+  "Waratah_CompleteStockCount.gs"
+  "Waratah_ExportOrderingDoc.gs"
 )
 
 GAS_SCRIPTS=(
@@ -109,6 +111,8 @@ clasp but backed up here for reference.
 | Waratah_InitStockCount.txt | Create stock count session + placeholders (Monday AM) | Airtable automation |
 | Waratah_ValidateStockCount.txt | Validate stock counts, flag outliers | Airtable automation |
 | Waratah_GenerateStockOrders.txt | Generate combined stock orders with prep usage | Airtable automation |
+| Waratah_CompleteStockCount.txt | Button-triggered: advance session to Completed | Airtable automation |
+| Waratah_ExportOrderingDoc.txt | Trigger ordering doc export via GAS polling | Airtable automation |
 | GoogleDocsPrepSystem.txt | Main doc exporter + Slack notifications (~2600 lines) | Google Apps Script |
 
 ## How to update Airtable

@@ -2183,7 +2183,7 @@ function exportCombinedOrderingDoc_() {
 
       if (reqIds.length) {
         const reqs = airtableGetByIds_(T.reqs, reqIds, [
-          F.reqItem, F.reqQty, F.reqSupplierNameStatic,
+          F.reqItem, F.reqQty, F.reqSupplierNameStatic, F.reqStaffStatic,
         ]);
 
         // Fetch any item IDs we don't already have
@@ -2207,8 +2207,10 @@ function exportCombinedOrderingDoc_() {
           if (id) barStockItemIds.add(id);
         });
 
-        // Aggregate prep-only items by itemId (same item may appear in multiple recipes)
-        const prepOnlyAgg = new Map(); // itemId -> { itemName, unit, qty, supplier }
+        // Aggregate prep-only items by itemId (same item may appear in multiple recipes).
+        // orderingStaff is a lookup chain: Item → Supplier → Ordering Staff, so it is
+        // consistent per item. First-seen value is kept on duplicate; conflicts are not expected.
+        const prepOnlyAgg = new Map(); // itemId -> { itemName, unit, qty, supplier, orderingStaff }
 
         reqs.forEach(r => {
           const itemId = firstId_(r.fields[F.reqItem]);
@@ -2235,11 +2237,12 @@ function exportCombinedOrderingDoc_() {
           const itemName = String(item.fields[F.itemName] || "(Unnamed)").replace(/[\r\n]+/g, " ").trim();
           const unit = cellToText_(item.fields[F.itemUnit]);
           const supplier = String(r.fields[F.reqSupplierNameStatic] || "").trim();
+          const orderingStaff = String(r.fields[F.reqStaffStatic] || "").trim();
 
           if (prepOnlyAgg.has(itemId)) {
             prepOnlyAgg.get(itemId).qty += qty;
           } else {
-            prepOnlyAgg.set(itemId, { itemName, unit, qty, supplier });
+            prepOnlyAgg.set(itemId, { itemName, unit, qty, supplier, orderingStaff });
           }
         });
 
@@ -2250,7 +2253,40 @@ function exportCombinedOrderingDoc_() {
     Logger.log(`WARNING: Could not fetch prep-only items — ${e.message}. Continuing without prep-only section.`);
   }
 
-  Logger.log(`Supplier groups: ${supplierMap.size}, No-supplier rows: ${noSupplierRows.length}, Prep-only rows: ${prepOnlyRows.length}`);
+  // Split prep-only rows by ordering staff: Andie and Blade get their own sections
+  const andieRows = [];
+  const bladeRows = [];
+  const otherPrepRows = [];
+  prepOnlyRows.forEach(row => {
+    const staff = (row.orderingStaff || "").toLowerCase();
+    if (staff === "blade") {
+      bladeRows.push(row);
+    } else if (staff === "andie") {
+      andieRows.push(row);
+    } else {
+      otherPrepRows.push(row);
+    }
+  });
+
+  // Helper: group rows by supplier name
+  function buildSupplierGroups_(rows) {
+    const grouped = new Map(); // supplierName → [rows]
+    const noSupplier = [];
+    rows.forEach(row => {
+      if (row.supplier) {
+        if (!grouped.has(row.supplier)) grouped.set(row.supplier, []);
+        grouped.get(row.supplier).push(row);
+      } else {
+        noSupplier.push(row);
+      }
+    });
+    return { grouped, noSupplier };
+  }
+
+  const andieGroups = buildSupplierGroups_(andieRows);
+  const bladeGroups = buildSupplierGroups_(bladeRows);
+
+  Logger.log(`Supplier groups: ${supplierMap.size}, No-supplier rows: ${noSupplierRows.length}, Andie rows: ${andieRows.length}, Blade rows: ${bladeRows.length}, Prep-only rows: ${otherPrepRows.length}`);
 
   // ── 6. Compute week ending date for doc title ──
   const weekEndDate = sessionDate ? computeWeekEndingFromDate_(sessionDate) : "";
@@ -2327,15 +2363,13 @@ function exportCombinedOrderingDoc_() {
     body.appendParagraph(supplierName).setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
 
     rows.forEach(r => {
-      // Display unit: ml items show no suffix (quantities are in bottles, item name has size);
-      // case/keg items show their unit label
-      const displayUnit = (r.unit && r.unit !== "ml") ? r.unit : "";
-      const line = `${r.itemName}  |  On Hand: ${fmtQty_(r.onHand)}  |  Par: ${fmtQty_(r.parQty)}  |  Prep: ${fmtQty_(r.prepUsage)}  |  Order: ${fmtQty_(r.combinedQty)}${displayUnit}`;
+      const displayUnit = (r.unit && r.unit !== "ml") ? ` ${r.unit}` : "x Bottles";
+      const line = `${r.itemName}  |  ${fmtQty_(r.combinedQty)}${displayUnit}`;
       const li = appendBullet_(body, line);
       li.setFontFamily("Avenir");
 
       // Bold the order quantity
-      const boldText = `Order: ${fmtQty_(r.combinedQty)}${displayUnit}`;
+      const boldText = `${fmtQty_(r.combinedQty)}${displayUnit}`;
       appendTextWithBoldUnderline_(li, line, boldText);
     });
   });
@@ -2347,29 +2381,86 @@ function exportCombinedOrderingDoc_() {
     body.appendParagraph("ITEMS BELOW PAR — NO SUPPLIER").setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
 
     noSupplierRows.forEach(r => {
-      const line = `${r.itemName}  |  On Hand: ${fmtQty_(r.onHand)}  |  Par: ${fmtQty_(r.parQty)}  |  Order: ${fmtQty_(r.combinedQty)}${r.unit || ""}`;
+      const displayUnit = (r.unit && r.unit !== "ml") ? ` ${r.unit}` : "x Bottles";
+      const line = `${r.itemName}  |  ${fmtQty_(r.combinedQty)}${displayUnit}`;
       const li = appendBullet_(body, line);
       li.setFontFamily("Avenir");
     });
   }
 
-  // ── 10. Prep-only items (non-bar-stock from Ingredient Requirements) ──
-  if (prepOnlyRows.length) {
-    prepOnlyRows.sort((a, b) => a.itemName.localeCompare(b.itemName));
+  // ── 9b/9c. Staff-specific prep orders (supplier-grouped) ──
+  // Shared renderer for staff prep sections
+  function renderStaffPrepSection_(body, sectionTitle, subtitle, groups) {
+    body.appendParagraph("").setFontFamily("Avenir");
+    body.appendParagraph(sectionTitle).setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
+    body.appendParagraph(subtitle).setFontFamily("Avenir");
+
+    const sortedSuppliers = Array.from(groups.grouped.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]));
+
+    sortedSuppliers.forEach(([supplierName, rows]) => {
+      rows.sort((a, b) => a.itemName.localeCompare(b.itemName));
+      body.appendParagraph(supplierName).setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
+
+      rows.forEach(r => {
+        const displayUnit = (r.unit && r.unit !== "ml") ? ` ${r.unit}` : "x Bottles";
+        const line = `${r.itemName}  |  ${fmtQty_(r.qty)}${displayUnit}`;
+        const li = appendBullet_(body, line);
+        li.setFontFamily("Avenir");
+        const boldText = `${fmtQty_(r.qty)}${displayUnit}`;
+        appendTextWithBoldUnderline_(li, line, boldText);
+      });
+    });
+
+    if (groups.noSupplier.length) {
+      groups.noSupplier.sort((a, b) => a.itemName.localeCompare(b.itemName));
+      body.appendParagraph("NO SUPPLIER").setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
+      groups.noSupplier.forEach(r => {
+        const displayUnit = (r.unit && r.unit !== "ml") ? ` ${r.unit}` : "x Bottles";
+        const line = `${r.itemName}  |  ${fmtQty_(r.qty)}${displayUnit}`;
+        const li = appendBullet_(body, line);
+        li.setFontFamily("Avenir");
+        const boldText = `${fmtQty_(r.qty)}${displayUnit}`;
+        appendTextWithBoldUnderline_(li, line, boldText);
+      });
+    }
+  }
+
+  if (andieRows.length) {
+    renderStaffPrepSection_(body,
+      "ANDIE'S ORDERS (from Prep Count)",
+      "These items are sourced from the prep count and ordered by Andie. Items already in the stock count above are excluded.",
+      andieGroups);
+  }
+
+  if (bladeRows.length) {
+    renderStaffPrepSection_(body,
+      "BLADE'S ORDERS (from Prep Count)",
+      "These items are sourced from the prep count and ordered by Blade.",
+      bladeGroups);
+  }
+
+  // ── 10. Prep-only items (non-bar-stock from Ingredient Requirements, excluding Blade) ──
+  if (otherPrepRows.length) {
+    otherPrepRows.sort((a, b) => a.itemName.localeCompare(b.itemName));
     body.appendParagraph("").setFontFamily("Avenir");
     body.appendParagraph("PREP-ONLY ITEMS (no bar stock count)").setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
     body.appendParagraph("These items are needed for prep but are not tracked in bar stock.").setFontFamily("Avenir");
 
-    prepOnlyRows.forEach(r => {
-      const line = `${r.itemName}  |  Prep: ${fmtQty_(r.qty)}${r.unit || ""}  |  Order: ${fmtQty_(r.qty)}${r.unit || ""}` +
+    otherPrepRows.forEach(r => {
+      const displayUnit = (r.unit && r.unit !== "ml") ? ` ${r.unit}` : "x Bottles";
+      const line = `${r.itemName}  |  ${fmtQty_(r.qty)}${displayUnit}` +
         (r.supplier ? `  |  Supplier: ${r.supplier}` : "");
       const li = appendBullet_(body, line);
       li.setFontFamily("Avenir");
+
+      const boldText = `${fmtQty_(r.qty)}${displayUnit}`;
+      appendTextWithBoldUnderline_(li, line, boldText);
     });
   }
 
   // ── 11. Empty state ──
-  if (!supplierMap.size && !noSupplierRows.length && !prepOnlyRows.length) {
+  if (!supplierMap.size && !noSupplierRows.length && !andieRows.length && !bladeRows.length && !otherPrepRows.length) {
     body.appendParagraph("No ordering lines found.").setFontFamily("Avenir");
   }
 
@@ -2385,7 +2476,7 @@ function exportCombinedOrderingDoc_() {
       const slackText =
         `*Ordering Run Sheet — ${sessionName}*\n` +
         `• ${slackLink_(docUrl, docTitle)}\n` +
-        `Counted by: ${countedBy}  |  ${supplierMap.size} suppliers  |  ${prepOnlyRows.length} prep-only items`;
+        `Counted by: ${countedBy}  |  ${supplierMap.size} suppliers  |  ${andieRows.length} Andie items  |  ${bladeRows.length} Blade items  |  ${otherPrepRows.length} prep-only items`;
       postToSlack_(evWebhook, slackText);
     } catch (e) {
       Logger.log(`Slack warning (ordering): ${e.message} — continuing without notification.`);
@@ -2400,7 +2491,9 @@ function exportCombinedOrderingDoc_() {
     sessionName,
     supplierCount: supplierMap.size,
     barStockOrderCount: orders.length,
-    prepOnlyCount: prepOnlyRows.length,
+    andieItemCount: andieRows.length,
+    bladeItemCount: bladeRows.length,
+    prepOnlyCount: otherPrepRows.length,
   };
 }
 
