@@ -52,13 +52,13 @@ The Waratah PREP system uses a two-script architecture:
 - `RecipeScalerUI.html` - Recipe scaler UI
 
 **Ordering Export Polling** (`processOrderingExportRequests()` in `GoogleDocsPrepSystem.gs`):
-- Polls Count Sessions table for records where "Ordering Export State" = "REQUESTED"
+- Polls Count Sessions table for records where "Ordering Export State" = "REQUESTED", patches state to IN_PROGRESS before processing
 - Calls `exportCombinedOrderingDoc_()` to generate the ordering doc
 - Sets "Ordering Export State" to COMPLETED (success) or ERROR (failure)
 - Requires a GAS time-driven trigger running every 1-2 minutes
 
 **Airtable Tables/Fields for Stock Ordering:**
-- **Count Sessions** table: "Ordering Export State" single-select field (options: REQUESTED, COMPLETED, ERROR)
+- **Count Sessions** table: "Ordering Export State" single-select field (options: REQUESTED, IN_PROGRESS, COMPLETED, ERROR)
 - **Stock Orders** table: one record per item with supplier, qty, unit, linked to Count Session. `Waratah_GenerateStockOrders.gs` Phase 8 cleanup deletes existing orders before regenerating (idempotent re-runs). Accepts sessions with status "Validated" or "Orders Generated".
 
 ### Stock Count Data Model
@@ -241,6 +241,31 @@ RECIPE_SCALER_URL=<DEPLOYED_WEB_APP_URL>
 ---
 
 ## Recent Changes
+
+
+### 2026-03-23 — Security Hardening, Shared Utilities, Dead Code Removal, IN_PROGRESS State
+
+**`GoogleDocsPrepSystem.gs` — Sanitized errors + IN_PROGRESS ordering state:**
+- `doPost()` error response now returns `"Internal error"` instead of full error details (prevents information leakage)
+- `processOrderingExportRequests()` now patches ordering export state to IN_PROGRESS before calling export function — prevents duplicate processing on slow exports
+
+**`PrepUtils.gs` — New shared utilities:**
+- `buildActiveItemNameMap_()` — fetches active Items from Airtable, returns `{recordId: name}` map for recipe name resolution
+- `resolveRecipeName_()` — resolves recipe name from either text field or linked record, venue-agnostic
+- `airtableFetchWithRetry_()` — automatic retry for Airtable REST calls: 429 (30s mandatory wait), 5xx (exponential backoff with jitter), 4xx (no retry). Now used by both `airtableGet_()` and `airtablePatch_()`
+
+**`RecipeScaler.gs` — Refactored to use shared utilities:**
+- `getRecipeDetails()` refactored to use `airtableGetByIds_()` and shared recipe name resolution via `resolveRecipeName_()` instead of raw `props.getProperty()` lookups
+
+**`FeedbackForm.gs` — Refactored to use shared utilities:**
+- `searchRecipes()` refactored to use `airtableGetByIds_()` and shared recipe name resolution instead of inline linked-record lookup
+
+**`PrepDocGenerators.gs` — Dead fallback generators removed (-388 lines):**
+- Deleted `createOrReplaceBatchingDoc_()` and `createOrReplaceIngredientPrepDoc_()` — these were programmatic fallback generators that duplicated template logic
+- Wrapper functions now call template functions directly without try-catch fallback
+- Templates are now required for all doc generation (no silent degradation to inferior formatting)
+
+---
 
 ### 2026-03-22 — Ordering Doc: Removed "Order (Prep & Stock Count)" / "Order (Prep)" Prefixes
 
@@ -559,7 +584,7 @@ RECIPE_SCALER_URL=<DEPLOYED_WEB_APP_URL>
 - **Method label → HEADING2** — "Method:" label promoted from bold plain paragraph to `DocumentApp.ParagraphHeading.HEADING2` across 8 locations (4 insert + 4 append: Batching, Ingredient Prep flat, sub-recipe nested, Garnish/Other)
 - **Scaler link spacer** — blank paragraph inserted between the `"📐 Scale this recipe"` link and the first ingredient bullet in all document sections (8 locations, both paths)
 - **Avenir font** — `.setFontFamily("Avenir")` applied to all paragraphs, list items, and text runs inserted by the script — including `insertParStockLines_`, `appendParStockLines_`, `insertFeedbackLink_`, `appendFeedbackLink_`, and `appendTextWithBoldUnderline_`
-- **"Name: _______" under subtitles** — plain paragraph `"Name: _______"` with Avenir font inserted after the SUBTITLE in `createOrReplaceBatchingDoc_` and `createOrReplaceIngredientPrepDoc_` only (not added to ordering docs)
+- **"Name: _______" under subtitles** — plain paragraph `"Name: _______"` with Avenir font inserted after the SUBTITLE in `createBatchingDocFromTemplate_` and `createIngredientPrepDocFromTemplate_` only (not added to ordering docs)
 
 ---
 
@@ -910,6 +935,15 @@ node deploy-docs-to-drive.js
 
 Converts all 5 docs to `.docx` and uploads/overwrites them in the shared Google Drive Help Docs folder. Uses service account `claude-sheets-access@quick-asset-465310-h5.iam.gserviceaccount.com`.
 
+### Google Workspace MCP & `gws` CLI
+
+For ad-hoc Drive/Docs operations (verifying doc content, listing folder contents, checking template IDs), two tools are available in addition to `deploy-docs-to-drive.js`:
+
+- **Google Workspace MCP** — configured in `.mcp.json` at project root. Claude can read/write Google Docs, Drive, and Sheets directly via MCP protocol.
+- **`gws` CLI** (v0.18.1) — terminal CLI for Google Workspace APIs. Example: `gws drive files list --params '{"q": "'\''<folder-id>'\'' in parents"}'`
+
+Both authenticate as `evan@pollenhospitality.com`. See root `CLAUDE.md` "External Tooling" section for full details.
+
 ---
 
 ## Support
@@ -920,4 +954,4 @@ Converts all 5 docs to `.docx` and uploads/overwrites them in the shared Google 
 
 ---
 
-*Last Updated: 2026-03-22*
+*Last Updated: 2026-03-23*

@@ -148,3 +148,10 @@ Edit in the GAS editor or via clasp. After changes, create a new deployment if n
 | `getRecipeDetails()` | Fetches full recipe with ingredients |
 | `calculateScaledRecipe()` | Performs the scaling calculation |
 | `debugRecipeScaler()` | Tests Airtable connection and field availability |
+
+---
+
+### Security
+
+- `RecipeScalerUI.html` uses `escapeHtml()` to sanitize all user-facing output — prevents XSS injection via recipe names or ingredient data
+- `doPost()` returns sanitized error messages ("Internal error") instead of full stack traces

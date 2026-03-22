@@ -34,10 +34,10 @@ Links to the scaler can be embedded in prep documents.
 
 The Waratah Recipes table does NOT have a plain text "Recipe Name" field. Instead, it uses `Item Name` -- a **linked record field** pointing to the Items table.
 
-The `getRecipeList()` function resolves names through three steps:
-1. **Fetch all active Items:** Build a map of `itemId --> itemName`
+The `getRecipeList()` function now uses shared utilities from PrepUtils.gs:
+1. **`buildActiveItemNameMap_()`** fetches all active Items and returns a `recordId -> name` map
 2. **Fetch all Recipes:** Each recipe has an `Item Name` field that is an array of linked record IDs (e.g., `["recXXXXXX"]`)
-3. **Resolve names:** For each recipe, extract the first linked item ID from the `Item Name` field, look it up in the Items map, and use that as the recipe name. Skip recipes whose linked item is not in the active Items map.
+3. **`resolveRecipeName_()`** extracts the first linked item ID and looks it up in the Items map
 
 This is different from Sakura House, which has a plain text `Recipe Name` field. Never reference `fields['Recipe Name']` in Waratah code.
 
@@ -49,7 +49,7 @@ This is different from Sakura House, which has a plain text `Recipe Name` field.
 |----------|----------|---------|
 | `doGetRecipeScaler(e)` | `doGet()` router in GoogleDocsPrepSystem.gs | Serves the HTML page |
 | `getRecipeList()` | Client-side JavaScript | Returns all active recipes (name + ID) using the linked-record resolution pattern |
-| `getRecipeDetails(recipeIdentifier)` | Client-side JavaScript | Fetches a recipe's ingredients and yield |
+| `getRecipeDetails(recipeIdentifier)` | Client-side JavaScript | Fetches recipe ingredients and yield using `airtableGetByIds_()` and `resolveRecipeName_()` |
 | `calculateScaledRecipe(recipeId, targetQty)` | Client-side JavaScript | Calculates scaled ingredient quantities |
 
 ---
@@ -113,3 +113,10 @@ The `SCALER_CONFIG` object defines:
 ## Important: Each Venue Has Its Own Deployment
 
 The Recipe Scaler web app URL must point to The Waratah's GAS project, not Sakura House's. Each venue has its own GAS project with its own Airtable credentials. Never share deployment URLs between venues.
+
+---
+
+### Security
+
+- `RecipeScalerUI.html` uses `escapeHtml()` to sanitize all user-facing output — prevents XSS injection via recipe names or ingredient data
+- `doPost()` returns sanitized error messages ("Internal error") instead of full stack traces

@@ -6,27 +6,74 @@
 
 ---
 
-## Agent Auto-Routing Rules
+## Agent Pipeline
 
-**Claude must follow these dispatch rules automatically — no user prompt required.**
+**Claude must execute this pipeline automatically on every task — no user prompt required.**
+Agents live in `.claude/agents/` and are invoked via the Task tool.
 
-| Trigger | Agent to dispatch |
-|---------|------------------|
-| Any task touching Sakura House files | `sakura-prep-agent` |
-| Any task touching Waratah files | `waratah-prep-agent` |
-| Task spans both venues | `prep-orchestrator` → parallelises into both venue agents |
-| After any GAS code change (>5 lines modified) | `gas-code-review-agent` before reporting work complete |
-| Before any `clasp push` | `documentation-agent` → then `deployment-agent` |
-| Any CLAUDE.md / doc update | `documentation-agent` |
-| Multi-step feature with 3+ files across venues | `prep-orchestrator` |
-| Waratah `.claspignore` or GAS deployment | `deployment-agent` — verify `.claspignore` excludes `Waratah_*.gs` (P0) |
-| Weekly cycle: `ClearWeeklyCount`, `FinaliseCount`, time-based polling | `weekly-cycle-agent` — high-risk, never edit standalone |
-| Slack notifications, webhook config, Block Kit | `slack-ordering-agent` |
-| Airtable base schema, linked records, views, REST API | `airtable-schema-agent` |
-| Live Airtable data access, querying records via MCP | `airtable-mcp-agent` |
-| Recipe Scaler (`RecipeScaler.gs`) | `recipe-scaler-agent` |
-| Cross-venue schema comparison or audit | `airtable-mcp-agent` via `/audit` |
-| Fix applied to a Tier 1/2 shared file (see `docs/SHARED_PATTERNS_REGISTRY.md`) | `parity-check-agent` after venue agent completes — backport if violation found |
+### Phase 1: GATE (before touching any code)
+
+Run these checks first. If a gate matches, dispatch that agent and **wait for it to complete** before proceeding.
+
+| Match | Agent | Rule |
+|-------|-------|------|
+| Task spans both venues OR 3+ files across venues | `prep-orchestrator` | **STOP.** Delegate entirely — orchestrator will route, parallelise, and call back. Do not proceed to Phase 2 yourself. |
+| Files match `*ClearWeeklyCount*`, `*FinaliseCount*`, `*TimeBasedPolling*` | `weekly-cycle-agent` | **HIGH RISK.** Never edit these files without this agent. It validates timing, sequencing, and data safety. |
+| Unsure which agent handles the task | `prep-orchestrator` | When in doubt, orchestrate. |
+
+### Phase 2: ROUTE (dispatch the right specialist)
+
+Match the task against these patterns. **Dispatch the first match.** If multiple independent specialists match (e.g., Slack change + Airtable schema change), dispatch them **in parallel** using a single message with multiple Task tool calls.
+
+| File Pattern / Domain | Agent | Context |
+|-----------------------|-------|---------|
+| `Sakura House/**` | `sakura-prep-agent` | Reads `Sakura House/CLAUDE.md` first |
+| `The Waratah/**` | `waratah-prep-agent` | Reads `The Waratah/CLAUDE.md` first |
+| `*Slack*`, `*webhook*`, `*Block Kit*`, `SLACK_WEBHOOK_*` | `slack-ordering-agent` | Validates staff names + webhook vars per venue |
+| Airtable table/field/view changes, REST API patterns | `airtable-schema-agent` | Finds all affected scripts before changing schema |
+| Live Airtable record queries, data inspection | `airtable-mcp-agent` | Read-only data access via MCP |
+| `RecipeScaler.gs`, `RecipeScalerUI.html` | `recipe-scaler-agent` | Verifies per-venue web app URL |
+| `GoogleDocsPrepSystem.gs` formatting, `insertXxx_`/`appendXxx_` | `gas-docs-formatter-agent` | DocumentApp API + template engine v4.2 |
+| Cross-venue Airtable schema audit | `airtable-mcp-agent` | Via `/audit` command |
+
+### Phase 3: CHECK (after code changes, before reporting complete)
+
+**Every task that modified code must pass these checks.** Run all matching checks — they are independent and can run in parallel.
+
+| Condition | Agent | What happens if it fails |
+|-----------|-------|--------------------------|
+| Any `.gs` file was edited | `gas-code-review-agent` | **Do not report work complete.** Fix all P0/P1 issues first, then re-run review. P2/P3 issues: report to user as suggestions. |
+| A Tier 1 or Tier 2 shared file was edited | `parity-check-agent` | If backport needed: dispatch the other venue's agent to apply the fix. Report parity status to user. |
+| Any code or behaviour changed | `documentation-agent` | Updates relevant `CLAUDE.md` + venue docs. Must run before Phase 4. |
+
+**Tier 1/2 shared files** (see `docs/SHARED_PATTERNS_REGISTRY.md`): `PrepUtils.gs`, `PrepConfig.gs`, `PrepDocFormatting.gs`, `PrepDocGenerators.gs`, `GoogleDocsPrepSystem.gs`, `FeedbackForm.gs`, `RecipeScaler.gs`
+
+### Phase 4: DEPLOY (only when user requests deployment)
+
+These run sequentially — each step gates the next. **Abort on any failure.**
+
+```
+1. documentation-agent  →  Verify all docs updated (blocks if not)
+2. gas-code-review-agent  →  Must have a passing report on all changed .gs files
+3. deployment-agent  →  Pre-deploy checklist:
+   ├── Verify .claspignore excludes Waratah_*.gs (P0)
+   ├── Verify correct .clasp.json scriptId for venue
+   ├── clasp status (confirm only intended files deploy)
+   ├── clasp push --force
+   └── Post-deploy health check
+```
+
+### Parallel Dispatch Rules
+
+**When to parallelise (single message, multiple Task calls):**
+- Two independent venue changes → `sakura-prep-agent` + `waratah-prep-agent` in parallel
+- Phase 3 checks after code change → `gas-code-review-agent` + `parity-check-agent` in parallel
+- Independent domain specialists → e.g., `slack-ordering-agent` + `airtable-schema-agent` in parallel
+
+**When NOT to parallelise (sequential only):**
+- Phase 4 deploy steps — each gates the next
+- `weekly-cycle-agent` — always runs alone (high-risk scripts)
+- Any agent that depends on another agent's output
 
 ---
 
@@ -53,27 +100,8 @@
 | `/update-scripts-docs [what changed]` | Update Sakura Advanced Script & Automation docs after script changes |
 | `/push-advanced-docs` | Push Sakura Advanced Script & Automation docs to Google Drive (manual only) |
 | `/push-waratah-advanced-docs` | Push Waratah Advanced Script & Automation docs to Google Drive (manual only) |
-
----
-
-## Agent Auto-Use Rules
-
-Specialist agents live in `.claude/agents/`. Claude invokes them via the Task tool. The following rules apply to every session — no manual invocation needed:
-
-| Condition | Agent to invoke |
-|-----------|----------------|
-| Any `.gs` file edited | `gas-code-review-agent` before reporting work complete |
-| Task touches both venues | `prep-orchestrator` first to parallelise |
-| Weekly count or time-based polling script changed | `weekly-cycle-agent` — never edit these standalone |
-| Slack notification added or changed | `slack-ordering-agent` — check staff names and webhook vars |
-| Airtable schema, table, or field changed | `airtable-schema-agent` — find all affected scripts first |
-| Recipe Scaler backend or UI changed | `recipe-scaler-agent` — verify per-venue web app URL |
-| Significant code change completed | `documentation-agent` to update relevant CLAUDE.md + docs |
-| Ready to `clasp push` | `documentation-agent` first, then `deployment-agent` pre-deploy checklist |
-| Tier 1/Tier 2 file edited (per `docs/SHARED_PATTERNS_REGISTRY.md`) | `parity-check-agent` — check counterpart venue for missing backport |
-| Waratah: any GAS deployment | `documentation-agent` first, then `deployment-agent` — verify `.claspignore` before every push |
-
-**Single entry point for non-trivial tasks:** describe the task to `prep-orchestrator` and it will route and parallelise automatically.
+| `/schema-export` | Export both venues' Airtable schemas to a Google Sheet with parity comparison tab |
+| `/backup-scripts [venue]` | Back up venue scripts (.gs → .txt) to Google Drive via MCP (`waratah`, `sakura`, or `both`) |
 
 ---
 
@@ -111,6 +139,7 @@ PREP Systems/
 ├── .claude/
 │   ├── agents/                   # 12 specialist agents
 │   └── commands/                 # 15 slash commands
+├── .mcp.json                     # MCP server config (GITIGNORED — OAuth credentials)
 └── CLAUDE.md                     # This navigation file (you are here)
 ```
 
@@ -146,6 +175,38 @@ PREP Systems/
 ### For Both Venues:
 - Sakura workflow: ClearPrepData (Fri 8 AM) → ClearWeeklyCount (Sat 8 AM) → Sat shift: count → finalise → generate → export → order → Sun–Wed: deliveries + prep
 - Waratah workflow: Stocktake Sunday → Mon AM automation → Ordering before 2pm Mon → Deliveries Tue → Prep Tue–Wed
+
+---
+
+## External Tooling
+*MCP servers and CLI tools available for Google Workspace operations.*
+
+### Google Workspace MCP
+Configured in `.mcp.json` at project root. Gives Claude direct read/write access to Google Docs, Drive, and Sheets via MCP protocol. Uses `uvx workspace-mcp --tool-tier core`. Authenticated as `evan@pollenhospitality.com`.
+
+**`.mcp.json` is gitignored** — it contains OAuth credentials and must never be committed.
+
+### `gws` CLI (v0.18.1)
+Installed globally via `npm install -g @googleworkspace/cli`. Terminal CLI for all Google Workspace APIs (Drive, Docs, Sheets, Gmail, Calendar). Authenticated with the same OAuth credentials as the MCP server.
+
+```bash
+# Examples
+gws drive files list --params '{"pageSize": 10}'
+gws docs documents get --documentId "<DOC_ID>"
+gws sheets spreadsheets get --spreadsheetId "<SHEET_ID>"
+```
+
+### Airtable MCP
+Configured in `.mcp.json`. Provides live read access to Airtable bases via `search_bases`, `list_tables_for_base`, `list_records_for_table`, etc. Used by `airtable-mcp-agent` for data inspection and cross-venue schema audits.
+
+### Airtable Schema Reference (Google Sheet)
+Live export of both venues' complete Airtable schemas: [PREP Systems — Airtable Schema Reference](https://docs.google.com/spreadsheets/d/1mBZsJwDogZQk0OGU527KGEKE8Nui85ZF9UatHM9IC-I/edit). Three tabs: Waratah (25 tables), Sakura House (17 tables), Schema Parity (differences only). Re-generate with `/schema-export`.
+
+### Script Backups (Google Drive)
+Scripts backed up as `.txt` files for reference and manual Airtable paste:
+- **Waratah:** [Script Backups](https://drive.google.com/drive/folders/1FN-IyBCXj1r_zDNunpZzR-8u8DRSSiSp) — 14 scripts (9 Airtable + 5 GAS)
+- **Sakura:** [Script Backups](https://drive.google.com/drive/folders/1ATD1g3YlyC-lOYVhfWuDuXlBJr1Mm1Om) — 12 scripts (5 Airtable + 5 GAS + 2 web apps)
+- Re-sync with `/backup-scripts` (both), `/backup-scripts waratah`, or `/backup-scripts sakura`
 
 ---
 

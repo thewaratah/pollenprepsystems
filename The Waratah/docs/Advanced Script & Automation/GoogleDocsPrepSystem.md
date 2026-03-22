@@ -160,10 +160,10 @@ After editing, run `bash sync-airtable-scripts-to-drive.sh` to update the Drive 
 | Function | Purpose |
 |----------|---------|
 | `doGet(e)` | Web app router -- serves Feedback Form or Recipe Scaler |
-| `doPost(e)` | Webhook endpoint -- manual triggers for ordering doc |
+| `doPost(e)` | Webhook endpoint -- manual triggers for ordering doc (returns sanitized error messages) |
 | `exportLatestPrepRunToDocs()` | Generates Ingredient Prep List + Batching Run Sheet |
 | `exportCombinedOrderingDoc_()` | Generates Combined Ordering Run Sheet |
 | `processExportRequests()` | Polls Prep Runs for REQUESTED state (prep docs) |
-| `processOrderingExportRequests()` | Polls Count Sessions for REQUESTED state (ordering doc) |
+| `processOrderingExportRequests()` | Polls Count Sessions for REQUESTED state, patches to IN_PROGRESS before processing (ordering doc) |
 | `exportLatestPrepRunToDocs_TEST()` | Test version -- sends to test Slack channel |
 | `exportCombinedOrderingDoc_TEST()` | Test version -- sends to test Slack channel |

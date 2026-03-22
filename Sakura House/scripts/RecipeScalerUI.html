@@ -398,6 +398,13 @@
         .calculateScaledRecipe(recipeId, ingredientId, availableQty);
     }
 
+    function escapeHtml(text) {
+      if (text == null) return '';
+      const div = document.createElement('div');
+      div.textContent = String(text);
+      return div.innerHTML;
+    }
+
     function displayResult(result) {
       document.getElementById('result-name').textContent = result.recipeName;
       document.getElementById('scale-badge').textContent = `${result.scalePercent}% scale`;
@@ -409,15 +416,16 @@
       result.ingredients.forEach(ing => {
         const li = document.createElement('li');
         li.className = 'ingredient-item';
+        const safeUnit = escapeHtml(ing.unit);
         li.innerHTML = `
           <div class="ingredient-name">
-            ${ing.name}
+            ${escapeHtml(ing.name)}
             ${ing.isConstraint ? '<span class="constraint-badge">CONSTRAINT</span>' : ''}
           </div>
           <div class="ingredient-qty">
-            <div class="scaled">${ing.scaledQty}${ing.unit}</div>
+            <div class="scaled">${escapeHtml(ing.scaledQty)}${safeUnit}</div>
             ${ing.scaledQty !== ing.originalQty ?
-              `<div class="original">${ing.originalQty}${ing.unit}</div>` : ''}
+              `<div class="original">${escapeHtml(ing.originalQty)}${safeUnit}</div>` : ''}
           </div>
         `;
         list.appendChild(li);

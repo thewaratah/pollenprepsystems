@@ -104,8 +104,9 @@ function doPost(e) {
       .setMimeType(ContentService.MimeType.JSON);
 
   } catch (err) {
+    Logger.log("doPost error: " + (err.stack || err.message || String(err)));
     return ContentService
-      .createTextOutput(JSON.stringify({ ok: false, error: String(err && err.message ? err.message : err) }))
+      .createTextOutput(JSON.stringify({ ok: false, error: "Internal error" }))
       .setMimeType(ContentService.MimeType.JSON);
   } finally {
     lock.releaseLock();
@@ -676,6 +677,22 @@ function processOrderingExportRequests() {
     const sessionDate = session.fields?.[F.csDate] || "(unknown)";
 
     Logger.log(`Processing ordering export for session ${sessionDate} (${sessionId})`);
+
+    // Set IN_PROGRESS before doing work — prevents duplicate processing on timeout
+    try {
+      airtablePatch_(T.countSessions, sessionId, {
+        [F.csOrderingExportState]: { name: "IN_PROGRESS" },
+      });
+    } catch (progressErr) {
+      Logger.log(`Failed to set IN_PROGRESS (trying plain string): ${progressErr.message}`);
+      try {
+        airtablePatch_(T.countSessions, sessionId, {
+          [F.csOrderingExportState]: "IN_PROGRESS",
+        });
+      } catch (progressErr2) {
+        Logger.log(`IN_PROGRESS update failed entirely: ${progressErr2.message}`);
+      }
+    }
 
     let exportSuccess = false;
     try {

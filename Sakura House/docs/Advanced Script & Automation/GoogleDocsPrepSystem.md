@@ -75,9 +75,9 @@ Documents are generated using a hybrid approach:
 - The code finds the `{{CONTENT}}` marker in the template and inserts content at that position
 - This avoids Google Docs API limitations with nested loops
 
-### Fallback
-- If a template is missing or fails to process, the script falls back to fully programmatic document generation (no branding, but all the data is correct)
-- This means the system never breaks due to a template issue -- it just looks less polished
+### Template Requirement
+- Templates are required for all document generation — fallback generators were removed (2026-03-23)
+- If a template is missing or broken, the script will throw an error rather than silently generating an unbranded doc
 
 ---
 
@@ -201,9 +201,9 @@ The `doGet()` function routes based on the `page` URL parameter.
 - **Cause:** A Slack webhook URL has expired (Slack webhook URLs can be revoked if the app is reinstalled)
 - **Fix:** Create a new webhook in Slack (App > Incoming Webhooks) and update the relevant Script Property
 
-### Template fails -- docs look plain
-- **Not an error** -- the fallback to programmatic generation is by design. Check:
-  - Is the template document ID correct?
+### Template fails -- export errors
+- **This IS an error** since fallback generators were removed. Check:
+  - Is the template document ID correct in Script Properties?
   - Does the template still exist in Google Drive?
   - Does it contain the `{{CONTENT}}` marker?
 
@@ -247,13 +247,14 @@ The `doGet()` function routes based on the `page` URL parameter.
 
 | Function | Purpose |
 |----------|---------|
-| `doPost()` | Webhook endpoint -- receives export requests |
+| `doPost()` | Webhook endpoint -- receives export requests (returns sanitized error messages) |
 | `doGet()` | Web app router -- serves Feedback Form or Recipe Scaler |
 | `exportLatestPrepRunToDocs()` | Main export function (LIVE mode) |
 | `exportLatestPrepRunToDocs_TEST()` | Test mode -- all Slack to test channel |
-| `createOrderingDoc_()` | Generates an ordering doc (template-first, with fallback) |
+| `createOrderingDoc_()` | Generates an ordering doc from template |
 | `createBatchingDoc_()` | Generates the batching doc |
 | `createIngredientPrepDoc_()` | Generates the ingredient prep doc |
 | `buildOrdering_()` | Splits requirements into Gooch/Sabs/needsRouting/negligible |
 | `postPrepRunToSlack_()` | Sends Slack notifications to all recipients |
+| `tryPostToSlack_()` | Wraps single Slack POST in try-catch — prevents one channel failure from aborting remaining notifications |
 | `formatQtyWithBuffer_()` | Formats quantities as "100ml (1.5x = 150ml)" |

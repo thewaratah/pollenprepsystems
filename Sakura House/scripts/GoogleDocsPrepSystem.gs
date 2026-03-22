@@ -92,8 +92,9 @@ function doPost(e) {
       .setMimeType(ContentService.MimeType.JSON);
 
   } catch (err) {
+    Logger.log("doPost error: " + (err.stack || err.message || String(err)));
     return ContentService
-      .createTextOutput(JSON.stringify({ ok: false, error: String(err && err.message ? err.message : err) }))
+      .createTextOutput(JSON.stringify({ ok: false, error: "Internal error" }))
       .setMimeType(ContentService.MimeType.JSON);
   } finally {
     lock.releaseLock();
@@ -415,7 +416,7 @@ function postPrepRunToSlack_({ runLabel, runFolderUrl, ingredientDoc, batchingDo
 
   webhooks.forEach(({ prop, text }, i) => {
     if (i > 0) Utilities.sleep(250);
-    postToSlack_(getSlackWebhook_(prop), text);
+    tryPostToSlack_(getSlackWebhook_(prop), text, prop);
   });
 }
 
@@ -431,6 +432,16 @@ function postToSlack_(webhookUrl, text) {
   const code = resp.getResponseCode();
   const body = resp.getContentText();
   if (code < 200 || code >= 300) throw new Error(`Slack webhook failed (${code}): ${body}`);
+}
+
+function tryPostToSlack_(webhookUrl, text, label) {
+  try {
+    postToSlack_(webhookUrl, text);
+    return true;
+  } catch (e) {
+    Logger.log(`Slack ${label || "post"} failed (non-fatal): ${e.message}`);
+    return false;
+  }
 }
 
 function getSlackWebhook_(propName) {

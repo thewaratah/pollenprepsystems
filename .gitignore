@@ -23,6 +23,7 @@ Thumbs.db
 
 # Claude/IDE (track .claude/agents and .claude/commands, ignore settings)
 .claude/settings.local.json
+.mcp.json
 
 # Logs
 *.log

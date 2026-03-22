@@ -46,21 +46,48 @@ function getDocsFolderId_() {
  * AIRTABLE REST API
  * ======================================================= */
 
+function airtableFetchWithRetry_(url, options, label) {
+  const MAX_RETRIES = 2;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const resp = UrlFetchApp.fetch(url, options);
+    const code = resp.getResponseCode();
+
+    if (code >= 200 && code < 300) {
+      return resp;
+    }
+
+    if (code === 429 && attempt < MAX_RETRIES) {
+      const delay = 30000 + (attempt * 5000);
+      Logger.log(`Airtable ${label} rate limited (429). Waiting ${delay / 1000}s before retry ${attempt + 1}/${MAX_RETRIES}`);
+      Utilities.sleep(delay);
+      continue;
+    }
+
+    if (code >= 500 && attempt < MAX_RETRIES) {
+      const delay = Math.pow(2, attempt) * 1000 * (0.5 + Math.random());
+      Logger.log(`Airtable ${label} server error (${code}). Retry ${attempt + 1}/${MAX_RETRIES} in ${Math.round(delay)}ms`);
+      Utilities.sleep(delay);
+      continue;
+    }
+
+    // 4xx (not 429) or retries exhausted — throw
+    const text = resp.getContentText();
+    throw new Error(`Airtable ${label} failed (${code}): ${text}`);
+  }
+}
+
 function airtableGet_(tableName, params) {
   const baseId = getAirtableBaseId_();
   const pat = getAirtablePat_();
   const url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}?${query_(params || {})}`;
 
-  const resp = UrlFetchApp.fetch(url, {
+  const resp = airtableFetchWithRetry_(url, {
     method: "get",
     headers: { Authorization: `Bearer ${pat}` },
     muteHttpExceptions: true,
-  });
+  }, "GET " + tableName);
 
-  const code = resp.getResponseCode();
-  const text = resp.getContentText();
-  if (code < 200 || code >= 300) throw new Error(`Airtable GET failed (${code}): ${text}`);
-  return JSON.parse(text);
+  return JSON.parse(resp.getContentText());
 }
 
 function airtableListAll_(tableName, opts) {
@@ -98,19 +125,51 @@ function airtablePatch_(tableName, recordId, fields) {
   const pat = getAirtablePat_();
   const url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${recordId}`;
 
-  const resp = UrlFetchApp.fetch(url, {
+  const resp = airtableFetchWithRetry_(url, {
     method: "patch",
     contentType: "application/json",
     headers: { Authorization: `Bearer ${pat}` },
     payload: JSON.stringify({ fields }),
     muteHttpExceptions: true,
-  });
+  }, "PATCH " + tableName);
 
-  const code = resp.getResponseCode();
-  const text = resp.getContentText();
-  if (code < 200 || code >= 300) throw new Error(`Airtable PATCH failed (${code}): ${text}`);
-  return JSON.parse(text);
+  return JSON.parse(resp.getContentText());
 }
+
+/* =========================================================
+ * RECIPE NAME RESOLUTION
+ * Shared utility for resolving recipe names.
+ * Sakura uses "Recipe Name" (plain text) — resolves directly.
+ * Waratah uses "Item Name" (linked record) — resolves via Items table.
+ * ======================================================= */
+
+function buildActiveItemNameMap_() {
+  const items = airtableListAll_(CFG.airtable.tables.items, {
+    fields: [CFG.airtable.fields.itemName],
+    filterByFormula: '{Status}="Active"',
+    pageSize: 100,
+  });
+  const map = {};
+  items.forEach(item => {
+    const name = item.fields[CFG.airtable.fields.itemName];
+    if (name) map[item.id] = String(name);
+  });
+  return map;
+}
+
+function resolveRecipeName_(recipeRecord, activeItemNameMap) {
+  const field = recipeRecord.fields[CFG.airtable.fields.recipeName];
+  if (typeof field === "string" && field.trim()) return field.trim();
+  if (!Array.isArray(field) || !field.length) return null;
+  const first = field[0];
+  const linkedId = typeof first === "string" ? first : (first && first.id ? first.id : null);
+  if (!linkedId) return null;
+  return activeItemNameMap[linkedId] || null;
+}
+
+/* =========================================================
+ * AIRTABLE CORE — DATA LOADERS
+ * ======================================================= */
 
 function getLatestRunWithData_() {
   const runs = airtableListAll_(CFG.airtable.tables.runs, {

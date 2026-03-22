@@ -158,41 +158,20 @@ function searchItems(query) {
  * Search recipes for autocomplete (partial match)
  */
 function searchRecipes(query) {
-  if (!query || query.length < 2) {
-    return [];
-  }
+  if (!query || query.length < 2) return [];
 
   const queryLower = query.toLowerCase();
+  const activeItemNameMap = buildActiveItemNameMap_();
 
-  // Waratah Recipes table uses 'Item Name' (linked record to Items), not 'Recipe Name' (plain text).
-  // Step 1: Build id → name map from active Items
-  const activeItemsById = {};
-  for (const item of airtableListAll_(FEEDBACK_CONFIG.airtable.tables.items, {
-    fields: ['Item Name'],
-    filterByFormula: '{Status}="Active"',
-    pageSize: 100
-  })) {
-    activeItemsById[item.id] = item.fields['Item Name'] || null;
-  }
-
-  // Step 2: Fetch all recipes
-  const allRecipes = airtableListAll_(FEEDBACK_CONFIG.airtable.tables.recipes, {
-    fields: ['Item Name'],
-    pageSize: 100
+  const allRecipes = airtableListAll_(CFG.airtable.tables.recipes, {
+    fields: [CFG.airtable.fields.recipeName],
+    pageSize: 100,
   });
 
-  // Step 3: Resolve name via linked Item ID, filter by query
   const matches = [];
   for (const r of allRecipes) {
-    const itemNameField = r.fields['Item Name'];
-    let linkedItemId = null;
-    if (Array.isArray(itemNameField) && itemNameField.length > 0) {
-      const first = itemNameField[0];
-      linkedItemId = typeof first === 'string' ? first : (first && first.id ? first.id : null);
-    }
-    const name = linkedItemId ? activeItemsById[linkedItemId] : null;
-    if (!name) continue;
-    if (!String(name).toLowerCase().includes(queryLower)) continue;
+    const name = resolveRecipeName_(r, activeItemNameMap);
+    if (!name || !String(name).toLowerCase().includes(queryLower)) continue;
     matches.push({ id: r.id, name: String(name) });
   }
 

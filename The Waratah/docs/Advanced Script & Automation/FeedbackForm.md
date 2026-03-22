@@ -35,13 +35,12 @@ The form is accessible via a URL link. This link can be:
 
 This is an important pattern specific to The Waratah. The Waratah Recipes table uses `Item Name` as a **linked record field** pointing to the Items table -- NOT a plain text "Recipe Name" field (which is what Sakura House uses).
 
-The `searchRecipes()` function resolves recipe names by:
-1. Fetching all active Items and building an `id --> name` map
-2. Fetching all Recipes (which have `Item Name` as linked record IDs)
-3. Resolving each recipe's name by looking up the linked item ID in the Items map
-4. Filtering by the search query
-
-This three-step pattern is consistent across FeedbackForm.gs, RecipeScaler.gs, and the Knowledge Platform API routes.
+The `searchRecipes()` function now uses shared utilities from PrepUtils.gs:
+1. **`buildActiveItemNameMap_()`** fetches active Items and returns a `recordId -> name` map
+2. **Fetches Recipes** via `airtableGetByIds_()` (batch fetching linked record IDs)
+3. **`resolveRecipeName_()`** resolves each recipe name from linked record
+4. Filters by the search query
+This shared utility pattern is consistent across FeedbackForm.gs, RecipeScaler.gs, and GoogleDocsPrepSystem.gs.
 
 ---
 

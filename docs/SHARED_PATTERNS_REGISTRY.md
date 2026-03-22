@@ -42,10 +42,12 @@ Same algorithm but venue-specific implementations. Changes to shared patterns (e
 
 | Sakura File | Waratah File | What Must Stay Aligned | What Diverges Intentionally |
 |-------------|-------------|------------------------|----------------------------|
-| `GoogleDocsPrepSystem.gs` | `GoogleDocsPrepSystem.gs` | `clearContent()` usage, credential access via Script Properties, error handling, Slack notification patterns, hybrid template engine v4.2, `chunk_()`, Airtable REST helpers | Recipe name resolution, staff names, template IDs, ordering doc structure (Sakura: 2 per-staff; Waratah: 1 combined), number of output docs |
+| `GoogleDocsPrepSystem.gs` | `GoogleDocsPrepSystem.gs` | `clearContent()` usage, credential access via Script Properties, error handling, sanitized `doPost()` error responses, `tryPostToSlack_()` resilient Slack pattern, hybrid template engine v4.2, `chunk_()`, Airtable REST helpers | Recipe name resolution, staff names, template IDs, ordering doc structure (Sakura: 2 per-staff; Waratah: 1 combined), number of output docs |
 | `RecipeScaler.gs` | `RecipeScaler.gs` | `muteHttpExceptions`, active-item filtering, error handling, scaling algorithm | Recipe name field (`Recipe Name` text vs `Item Name` linked record), web app URL |
 | `GeneratePrepSheet.gs` | `Waratah_GeneratePrepSheet_TimeBasedPolling.gs` | Export request state machine (`REQUESTED` → `DONE`/`ERROR`) | Trigger mechanism (single-record vs polling), date guard |
 | `deploy-docs-to-drive.js` | `deploy-docs-to-drive.js` | Core conversion logic (`convertMarkdownToDocx`, `uploadToFolder`, `main`) | Folder IDs, file lists, labels |
+| `PrepUtils.gs` | `PrepUtils.gs` | `airtableFetchWithRetry_()` retry logic, `buildActiveItemNameMap_()`, `resolveRecipeName_()`, `airtableGet_()`, `airtablePatch_()`, `chunk_()` | None — identical shared utilities |
+| `PrepDocGenerators.gs` | `PrepDocGenerators.gs` | Template-only doc generation (no fallback generators), wrapper function pattern | Recipe name resolution, ordering doc structure (Sakura: per-staff; Waratah: combined) |
 
 ---
 

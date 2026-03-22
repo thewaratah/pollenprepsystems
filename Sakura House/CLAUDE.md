@@ -2,7 +2,7 @@
 
 A kitchen prep management system integrating Airtable, Google Apps Script, Google Docs, and Slack. Automates the weekly cycle from stocktake through prep task generation, document creation, and team notifications.
 
-**Last Updated:** 2026-03-21
+**Last Updated:** 2026-03-23
 **Status:** Production ✅
 **Airtable Base:** `appNsFRhuU47e9qlR`
 **GAS Script ID:** `1ALLTzQ44TDvekiQ2phF2tCKnbdNPmzbGqR6rGDL6scOIgI5aszJAWfEM`
@@ -173,7 +173,7 @@ Templates provide branding (logo, headers); code provides all dynamic content.
 ```
 Template: [Logo] + {{DATE}} + {{RUN_LABEL}} + {{STAFF_NAME}} + {{CONTENT}} marker
 Code:     Replaces placeholders, then inserts dynamic content at {{CONTENT}} position
-Fallback: Full programmatic generation if template missing
+Templates are required — fallback doc generators removed (2026-03-23)
 ```
 
 Template IDs stored in Script Properties: `TEMPLATE_ORDERING_ID`, `TEMPLATE_BATCHING_ID`, `TEMPLATE_INGREDIENT_PREP_ID`
@@ -252,6 +252,15 @@ node deploy-docs-to-drive.js
 
 Converts `STAFF_GUIDE.md`, `MANAGER_GUIDE.md`, `NEW_STARTER_WELCOME.md`, `TROUBLESHOOTING.md` to `.docx` and uploads/overwrites them in the shared Google Drive folder. Uses service account `claude-sheets-access@quick-asset-465310-h5.iam.gserviceaccount.com`.
 
+### Google Workspace MCP & `gws` CLI
+
+For ad-hoc Drive/Docs operations (verifying doc content, listing folder contents, checking template IDs), two tools are available in addition to `deploy-docs-to-drive.js`:
+
+- **Google Workspace MCP** — configured in `.mcp.json` at project root. Claude can read/write Google Docs, Drive, and Sheets directly via MCP protocol.
+- **`gws` CLI** (v0.18.1) — terminal CLI for Google Workspace APIs. Example: `gws drive files list --params '{"q": "'\''<folder-id>'\'' in parents"}'`
+
+Both authenticate as `evan@pollenhospitality.com`. See root `CLAUDE.md` "External Tooling" section for full details.
+
 ---
 
 ## Critical Rules
@@ -281,6 +290,27 @@ Converts `STAFF_GUIDE.md`, `MANAGER_GUIDE.md`, `NEW_STARTER_WELCOME.md`, `TROUBL
 
 ## Recent Changes
 *Session-by-session change log (most recent first).*
+### 2026-03-23 — Security Hardening, Shared Utilities, Dead Code Removal
+
+**`RecipeScalerUI.html` — XSS fix (backport from Waratah):**
+- Added `escapeHtml()` to sanitize all user-facing output — prevents XSS via recipe names or ingredient data
+
+**`GoogleDocsPrepSystem.gs` — Resilient Slack notifications + sanitized errors:**
+- Added `tryPostToSlack_()` — wraps each Slack POST in try-catch so a single channel failure no longer aborts remaining notifications
+- `doPost()` error response now returns `"Internal error"` instead of full error details (prevents information leakage)
+
+**`PrepUtils.gs` — New shared utilities:**
+- `buildActiveItemNameMap_()` — fetches active Items from Airtable, returns `{recordId: name}` map for recipe name resolution
+- `resolveRecipeName_()` — resolves recipe name from either text field or linked record, venue-agnostic
+- `airtableFetchWithRetry_()` — automatic retry for Airtable REST calls: 429 (30s mandatory wait), 5xx (exponential backoff with jitter), 4xx (no retry). Now used by both `airtableGet_()` and `airtablePatch_()`
+
+**`PrepDocGenerators.gs` — Dead fallback generators removed (-280 lines):**
+- Deleted `createOrReplaceBatchingDoc_()`, `createOrReplaceIngredientPrepDoc_()`, `createOrReplaceOrderingDoc_()` — these were programmatic fallback generators that duplicated template logic
+- Wrapper functions now call template functions directly without try-catch fallback
+- Templates are now required for all doc generation (no silent degradation to inferior formatting)
+
+---
+
 
 ### 2026-03-21 — Deploy-to-Drive, Stale File Cleanup, Automation URLs
 

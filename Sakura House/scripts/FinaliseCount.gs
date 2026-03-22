@@ -594,6 +594,7 @@ async function main() {
     fields: {
       [CONFIG.countConfirmedField]: true,
       [CONFIG.countDateField]: normalizedDate,
+      [CONFIG.countSourceField]: { name: CONFIG.verifiedSourceName },
     }
   }));
 

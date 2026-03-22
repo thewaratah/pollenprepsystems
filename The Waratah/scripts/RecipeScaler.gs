@@ -64,47 +64,21 @@ function include(filename) {
  * and cross-references against active Items (Status = "Active") to filter out inactive recipes.
  */
 function getRecipeList() {
-  // Step 1: Fetch all active Items and build id → name map
-  const activeItemsById = {};
-  for (const item of airtableListAll_(SCALER_CONFIG.airtable.tables.items, {
-    fields: ['Item Name'],
-    filterByFormula: '{Status}="Active"',
-    pageSize: 100
-  })) {
-    activeItemsById[item.id] = item.fields['Item Name'] || 'Unknown';
-  }
+  const activeItemNameMap = buildActiveItemNameMap_();
 
-  // Step 2: Fetch all recipes with pagination
-  // "Item Name" is a linked record field on Recipes pointing to the Items table.
-  // The REST API returns linked record fields as [{id, name}] objects.
-  const allRecipes = airtableListAll_(SCALER_CONFIG.airtable.tables.recipes, {
-    fields: ['Item Name', 'Yield Qty'],
-    pageSize: 100
+  const allRecipes = airtableListAll_(CFG.airtable.tables.recipes, {
+    fields: [CFG.airtable.fields.recipeName, 'Yield Qty'],
+    pageSize: 100,
   });
 
-  // Step 3: Map, filter by active items, and resolve names
   const recipes = [];
   for (const r of allRecipes) {
-    // Extract linked item ID from 'Item Name' linked record field
-    const itemNameField = r.fields['Item Name'];
-    let linkedItemId = null;
-    if (Array.isArray(itemNameField) && itemNameField.length > 0) {
-      const first = itemNameField[0];
-      linkedItemId = typeof first === 'string' ? first : first?.id;
-    }
-
-    // Skip recipes with no linked item or whose item is not active
-    if (!linkedItemId || !activeItemsById[linkedItemId]) continue;
-
-    recipes.push({
-      id: r.id,
-      name: activeItemsById[linkedItemId]
-    });
+    const name = resolveRecipeName_(r, activeItemNameMap);
+    if (!name) continue;
+    recipes.push({ id: r.id, name });
   }
 
-  // Sort by name
   recipes.sort((a, b) => a.name.localeCompare(b.name));
-
   return recipes;
 }
 
@@ -113,75 +87,64 @@ function getRecipeList() {
  * Fetches ALL recipe lines and filters client-side (same approach as GoogleDocsPrepSystem.gs)
  */
 function getRecipeDetails(recipeIdentifier) {
-  const props = PropertiesService.getScriptProperties();
-  const baseId = props.getProperty('AIRTABLE_BASE_ID');
-  const pat = props.getProperty('AIRTABLE_PAT');
-
-  if (!baseId || !pat) {
-    throw new Error('Airtable credentials not configured (AIRTABLE_BASE_ID or AIRTABLE_PAT missing)');
-  }
-
-  // First, find the recipe
-  let recipeRecord;
-
-  if (recipeIdentifier.startsWith('rec')) {
-    // It's a record ID - fetch directly
-    const url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(SCALER_CONFIG.airtable.tables.recipes)}/${recipeIdentifier}`;
-    const response = UrlFetchApp.fetch(url, {
-      headers: { 'Authorization': `Bearer ${pat}` },
-      muteHttpExceptions: true
-    });
-    const code = response.getResponseCode();
-    if (code < 200 || code >= 300) {
-      throw new Error(`Airtable recipe fetch failed (${code}): ${response.getContentText()}`);
-    }
-    recipeRecord = JSON.parse(response.getContentText());
-  } else {
+  if (!recipeIdentifier || !recipeIdentifier.startsWith('rec')) {
     throw new Error('Please use recipe ID for lookup');
   }
+
+  // Fetch recipe record via validated helpers
+  const recs = airtableGetByIds_(CFG.airtable.tables.recipes, [recipeIdentifier], [
+    CFG.airtable.fields.recipeName, 'Yield Qty',
+  ]);
+  if (!recs.length) throw new Error('Recipe not found: ' + recipeIdentifier);
+  const recipeRecord = recs[0];
 
   const yieldQty = recipeRecord.fields['Yield Qty'] || 1;
   const recipeId = recipeRecord.id;
 
-  // Extract linked item ID for name resolution (used after itemsById is built below)
-  const itemLinkField = recipeRecord.fields['Item Name'];
-  let linkedItemId = null;
-  if (Array.isArray(itemLinkField) && itemLinkField.length > 0) {
-    const first = itemLinkField[0];
-    linkedItemId = typeof first === 'string' ? first : first?.id;
-  }
+  // Resolve recipe name via shared utility
+  const activeItemNameMap = buildActiveItemNameMap_();
+  const recipeName = resolveRecipeName_(recipeRecord, activeItemNameMap) || 'Unknown';
 
-  // Fetch ALL recipe lines with pagination
-  // Include Name field (ingredient name), Unit field, Recipe, Item, Qty
-  const allLines = airtableListAll_(SCALER_CONFIG.airtable.tables.recipeLines, {
-    fields: ['Recipe', 'Item', 'Qty', 'Name', 'Unit'],
-    pageSize: 100
+  // Fetch ALL recipe lines with pagination, filter client-side
+  const allLines = airtableListAll_(CFG.airtable.tables.recipeLines, {
+    fields: [CFG.airtable.fields.rlRecipe, CFG.airtable.fields.rlItem, CFG.airtable.fields.rlQty, 'Name', 'Unit'],
+    pageSize: 100,
   });
 
-  // Filter client-side for lines matching this recipe
   const matchingLines = allLines.filter(line => {
-    const linkedRecipeIds = line.fields['Recipe'];
+    const linkedRecipeIds = line.fields[CFG.airtable.fields.rlRecipe];
     if (!Array.isArray(linkedRecipeIds)) return false;
     return linkedRecipeIds.includes(recipeId);
   });
 
-  // Fetch ALL items with pagination (same approach as GoogleDocsPrepSystem.gs)
+  // Collect item IDs from matching lines and fetch only those
+  const lineItemIds = [...new Set(matchingLines
+    .map(l => { const ids = l.fields[CFG.airtable.fields.rlItem]; return Array.isArray(ids) ? ids[0] : null; })
+    .filter(Boolean)
+  )];
+
   const itemsById = {};
-  for (const item of airtableListAll_(SCALER_CONFIG.airtable.tables.items, {
-    fields: ['Item Name', 'Unit'],
-    pageSize: 100
-  })) {
-    itemsById[item.id] = {
-      name: item.fields['Item Name'] || 'Unknown',
-      unit: item.fields['Unit'] || ''
-    };
+  if (lineItemIds.length) {
+    for (const item of airtableGetByIds_(CFG.airtable.tables.items, lineItemIds, [CFG.airtable.fields.itemName, CFG.airtable.fields.itemUnit])) {
+      itemsById[item.id] = {
+        name: item.fields[CFG.airtable.fields.itemName] || 'Unknown',
+        unit: item.fields[CFG.airtable.fields.itemUnit] || '',
+      };
+    }
   }
 
-  // Resolve recipe name and yield unit via linked item (Waratah uses Item Name linked record, not Recipe Name plain text)
-  const linkedItem = linkedItemId ? itemsById[linkedItemId] : null;
-  let recipeName = linkedItem ? linkedItem.name : null;
-  if (!recipeName) recipeName = 'Unknown';
-  const yieldUnit = linkedItem ? linkedItem.unit : '';
+  // Resolve yield unit from recipe's linked item
+  const recipeItemField = recipeRecord.fields[CFG.airtable.fields.recipeName];
+  let yieldUnit = '';
+  if (Array.isArray(recipeItemField) && recipeItemField.length) {
+    const linkedId = typeof recipeItemField[0] === 'string' ? recipeItemField[0] : recipeItemField[0]?.id;
+    if (linkedId && itemsById[linkedId]) yieldUnit = itemsById[linkedId].unit;
+    else {
+      // Yield item might not be in lineItemIds; fetch it
+      const yieldItems = airtableGetByIds_(CFG.airtable.tables.items, [linkedId], [CFG.airtable.fields.itemUnit]);
+      if (yieldItems.length) yieldUnit = yieldItems[0].fields[CFG.airtable.fields.itemUnit] || '';
+    }
+  }
 
   // Build ingredients array using Item names from Items table
   const ingredients = [];

@@ -33,6 +33,7 @@ The script has safety guards to prevent unnecessary re-triggers:
 |---------------|-----------|
 | Empty / null | Sets to "REQUESTED" -- normal operation |
 | "REQUESTED" | Does nothing -- already waiting for GAS to process |
+| "IN_PROGRESS" | Does nothing -- GAS is currently processing this request |
 | "COMPLETED" | Does nothing -- doc already generated. Clear the field first if you want to regenerate |
 | "ERROR" | Sets to "REQUESTED" -- retries after a failed export |
 
@@ -64,7 +65,7 @@ Writes a SUCCESS entry recording the export request.
 | "Already REQUESTED" | Script was already triggered and GAS hasn't processed it yet | Wait 1-2 minutes for GAS to process. Check GAS execution logs if nothing happens |
 | "Already COMPLETED" | Ordering doc was already generated | To regenerate, clear the `Ordering Export State` field in Airtable, then press the button again |
 | GAS never processes the request | GAS time-trigger is not running | Open GAS editor, check Triggers for `processOrderingExportRequests` |
-| "Field 'Ordering Export State' not found" | The field was renamed or deleted from Count Sessions | Add a Single Select field called "Ordering Export State" with options: REQUESTED, COMPLETED, ERROR |
+| "Field 'Ordering Export State' not found" | The field was renamed or deleted from Count Sessions | Add a Single Select field called "Ordering Export State" with options: REQUESTED, IN_PROGRESS, COMPLETED, ERROR |
 
 ---
 
