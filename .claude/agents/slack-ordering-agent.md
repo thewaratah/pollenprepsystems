@@ -16,15 +16,14 @@ You do not deploy — gate pushes on `gas-code-review-agent` then `deployment-ag
 
 ## Notification Architecture
 
-Prep documents are generated in `GoogleDocsPrepSystem.gs` (both venues). After generation, three Slack messages are sent:
+Prep documents are generated in `GoogleDocsPrepSystem.gs` (both venues). Notification patterns differ by venue:
 
-| Channel | Recipient | Content |
-|---------|-----------|---------|
-| Prep channel | Ops team | All 4 doc links (Ingredient Prep + Batching + both ordering docs) |
-| Ordering staff 1 | Individual (Andie / Gooch) | Ingredient Prep + Batching + their ordering doc |
-| Ordering staff 2 | Individual (Blade / Sabs) | Ingredient Prep + Batching + their ordering doc |
+**Sakura House:** 4 docs per run (Gooch Ordering + Sabs Ordering + Batching + Ingredient Prep), Slack messages to individual ordering staff + prep channel.
 
-**Feb 2026 change:** Folder links removed from all 3 messages. Individual ordering staff now receive all 4 doc links (not just their ordering doc). Slack link labels use `doc.title` (which includes the W.E. date suffix).
+**The Waratah:** 2 prep docs (Batching + Ingredient Prep) on Monday AM + 1 combined ordering doc (separate trigger via stock count pipeline). Slack messages to prep channel + test channel.
+
+**Feb 2026 change:** Folder links removed from all messages. Slack link labels use `doc.title` (which includes the W.E. date suffix).
+**Mar 2026 change:** Waratah ordering consolidated into single combined doc (per-staff ordering docs retired).
 
 ---
 
@@ -34,19 +33,23 @@ Prep documents are generated in `GoogleDocsPrepSystem.gs` (both venues). After g
 
 | Script Property | Purpose |
 |-----------------|---------|
-| `SLACK_WEBHOOK_WARATAH_ANDIE` | Andie's ordering channel |
-| `SLACK_WEBHOOK_WARATAH_BLADE` | Blade's ordering channel |
-| `SLACK_WEBHOOK_WARATAH_PREP` | General prep ops channel |
+| `SLACK_WEBHOOK_PREP` | General prep ops channel |
+| `SLACK_WEBHOOK_WARATAH_PREP` | Waratah-specific prep channel |
 | `SLACK_WEBHOOK_WARATAH_TEST` | Test webhook (safe for development) |
+| `SLACK_WEBHOOK_EV_TEST` | Evan's test channel (also used for ordering notifications) |
+
+**Note:** Per-staff webhooks (`WARATAH_ANDIE`, `WARATAH_BLADE`) were retired in Phase 3 (Mar 2026) when ordering was consolidated into a single combined doc.
 
 ### Sakura House
 
 | Script Property | Purpose |
 |-----------------|---------|
-| `SLACK_WEBHOOK_SAKURA_GOOCH` | Gooch's ordering channel |
-| `SLACK_WEBHOOK_SAKURA_SABS` | Sabs's ordering channel |
-| `SLACK_WEBHOOK_SAKURA_PREP` | General prep ops channel |
-| `SLACK_WEBHOOK_SAKURA_TEST` | Test webhook |
+| `SLACK_WEBHOOK_GOOCH` | Gooch's ordering channel |
+| `SLACK_WEBHOOK_SABS` | Sabs's ordering channel |
+| `SLACK_WEBHOOK_PREP` | General prep ops channel |
+| `SLACK_WEBHOOK_EV_TEST` | Test channel + feedback notifications |
+| `SLACK_WEBHOOK_KALISHA` | Kalisha's channel |
+| `SLACK_WEBHOOK_EVAN` | Evan's channel |
 
 ---
 

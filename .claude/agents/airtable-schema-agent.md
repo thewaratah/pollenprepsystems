@@ -114,7 +114,7 @@ https://api.airtable.com/v0/{BASE_ID}/{TABLE_NAME}
 ```javascript
 function fetchAirtable_(endpoint, options) {
   const baseId = PropertiesService.getScriptProperties()
-    .getProperty('WARATAH_AIRTABLE_BASE_ID'); // or SAKURA_AIRTABLE_BASE_ID
+    .getProperty('AIRTABLE_BASE_ID'); // same property name in both venues
   const pat = PropertiesService.getScriptProperties()
     .getProperty('AIRTABLE_PAT');
 

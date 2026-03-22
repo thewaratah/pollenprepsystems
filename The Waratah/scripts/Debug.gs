@@ -20,8 +20,7 @@ function debugAirtableConnection() {
     patLooksCorrect: pat.startsWith("pat"),
     DOCS_FOLDER_ID: getDocsFolderId_(),
     MANUAL_TRIGGER_SECRET_set: !!PropertiesService.getScriptProperties().getProperty(CFG.props.manualTriggerSecret),
-    WARATAH_TEMPLATE_ANDIE_ORDERING_ID: getOptionalProp_(CFG.props.templateOrderingAndie) || "(not set)",
-    WARATAH_TEMPLATE_BLADE_ORDERING_ID: getOptionalProp_(CFG.props.templateOrderingBlade) || "(not set)",
+    WARATAH_TEMPLATE_ORDERING_ID: getOptionalProp_(CFG.props.templateOrderingCombined) || "(not set)",
     WARATAH_TEMPLATE_BATCHING_ID: getOptionalProp_(CFG.props.templateBatching) || "(not set)",
     WARATAH_TEMPLATE_INGREDIENT_PREP_ID: getOptionalProp_(CFG.props.templateIngredientPrep) || "(not set)",
   });

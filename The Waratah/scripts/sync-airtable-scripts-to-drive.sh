@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # sync-airtable-scripts-to-drive.sh
 #
-# Copies the 4 Airtable-only scripts + GoogleDocsPrepSystem.gs (.gs → .txt) + README to Google Drive.
+# Copies the 9 Airtable-only scripts + GoogleDocsPrepSystem.gs (.gs → .txt) + README to Google Drive.
 # Uses the clasp OAuth refresh token for authentication.
 #
 # Target folder: https://drive.google.com/drive/folders/1FN-IyBCXj1r_zDNunpZzR-8u8DRSSiSp

@@ -11,7 +11,7 @@
  * - Slack notifications to admin
  * - Airtable logging for tracking
  *
- * @version 1.0
+ * @version 1.1
  */
 
 // =============================================================================

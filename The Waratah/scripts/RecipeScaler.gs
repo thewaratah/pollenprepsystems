@@ -6,7 +6,7 @@
  *
  * Usage: Deploy as web app, access with ?recipe=RecipeName or ?recipeId=recXXX
  *
- * @version 1.0
+ * @version 1.1
  */
 
 // =============================================================================

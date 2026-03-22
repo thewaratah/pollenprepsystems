@@ -14,16 +14,37 @@ You do not deploy — gate all pushes on `gas-code-review-agent` then `deploymen
 
 ---
 
-## Weekly Cycle Sequence
+## Weekly Cycle Sequences (differ by venue)
 
+### Sakura House
 ```
-Saturday AM      → ClearWeeklyCount        (initialise stocktake — sets all counts to 0 / creates placeholders)
-Saturday–Sunday  → Physical stocktake      (staff enter real counts in Airtable)
-Monday AM        → FinaliseCount           (validate + lock stocktake — moves records to Verified)
-Monday PM        → GeneratePrepRun         (calculate shortfalls, generate Prep Tasks in Airtable)
-Monday PM        → Time-based polling      (GAS polls every minute; detects Export Request State = REQUESTED)
-Monday PM        → GoogleDocsPrepSystem    (generates Google Docs, sends Slack notifications)
-Tuesday–Fri/Sat  → Staff execute prep
+Friday 8 AM      → ClearPrepData           (delete Prep Tasks + Ingredient Requirements)
+Saturday 8 AM    → ClearWeeklyCount         (reset counts, create placeholders)
+Saturday shift   → Physical stocktake       (staff enter counts in Airtable Interface)
+Saturday shift   → FinaliseCount            (validate + lock stocktake)
+Saturday shift   → GeneratePrepRun          (calculate shortfalls, generate Prep Tasks)
+Saturday shift   → GeneratePrepSheet        (mark export as REQUESTED)
+Saturday shift   → GoogleDocsPrepSystem     (generates 4 Google Docs + Slack)
+Sun–Wed          → Deliveries + prep execution
+```
+
+### The Waratah (two parallel pipelines)
+```
+STOCK COUNT PIPELINE:
+Sunday AM        → InitStockCount           (create Count Session + Stock Count placeholders)
+Sunday           → Physical stocktake        (Evan enters per-area tallies)
+Sunday           → CompleteStockCount        (mark session "Completed")
+Sunday           → ValidateStockCount        (auto: flag outliers, set "Validated")
+Sunday           → GenerateStockOrders       (auto: create Stock Orders, set REQUESTED)
+Sunday–Monday    → processOrderingExportRequests (GAS: generate Combined Ordering Doc)
+
+PREP PIPELINE:
+Monday 3 PM      → ClearWeeklyCount         (reset Weekly Counts, create placeholders)
+Sunday 11 PM     → FinaliseCount            (validate + lock stocktake)
+Sunday 11:15 PM  → GeneratePrepRun          (calculate shortfalls, generate Prep Tasks)
+Sunday 11:15 PM  → TimeBasedPolling         (mark export as REQUESTED)
+Monday AM        → processExportRequests_   (GAS: generate Batching + Ingredient Prep docs)
+Tue–Wed          → Deliveries + prep execution
 ```
 
 ---

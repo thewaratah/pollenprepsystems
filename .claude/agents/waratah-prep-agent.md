@@ -23,7 +23,7 @@ The Waratah/scripts/
 ├── GoogleDocsPrepSystem.gs            ← GAS (main doc exporter + Slack)
 ├── FeedbackForm.gs + FeedbackFormUI.html ← GAS (web app)
 ├── RecipeScaler.gs + RecipeScalerUI.html ← GAS (web app)
-└── GoogleDocsPrepSystem_TestHarness.gs ← excluded from clasp (test only)
+└── Debug.gs                              ← excluded from clasp (debug only)
 ```
 
 **Two execution environments:**

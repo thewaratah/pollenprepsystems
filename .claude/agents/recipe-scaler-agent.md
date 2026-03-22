@@ -42,7 +42,7 @@ Each venue has its own GAS web app deployment. The `RECIPE_SCALER_URL` Script Pr
 ```javascript
 function getRecipeList() {
   const pat = PropertiesService.getScriptProperties().getProperty('AIRTABLE_PAT');
-  const baseId = PropertiesService.getScriptProperties().getProperty('WARATAH_AIRTABLE_BASE_ID');
+  const baseId = PropertiesService.getScriptProperties().getProperty('AIRTABLE_BASE_ID');
 
   // Step 1: Fetch all active Items → build id→name map
   const itemsResponse = fetchAirtable_('/Items?filterByFormula={Status}="Active"', pat, baseId);
@@ -71,13 +71,11 @@ function getRecipeList() {
 Each venue requires its own GAS web app deployment:
 
 ### The Waratah
-- Script Property: `WARATAH_RECIPE_SCALER_URL`
-- Script Property: `RECIPE_SCALER_URL` (also set — this is what the GAS export links use)
+- Script Property: `RECIPE_SCALER_URL` (Waratah's own GAS web app URL)
 - Status: Deployed 2026-02-26 (Waratah-specific deployment)
 
 ### Sakura House
-- Script Property: `SAKURA_RECIPE_SCALER_URL`
-- Script Property: `RECIPE_SCALER_URL`
+- Script Property: `RECIPE_SCALER_URL` (Sakura's own GAS web app URL)
 
 **Historical bug (fixed Feb 2026):** Waratah's `RECIPE_SCALER_URL` was pointing to the Sakura web app deployment. Always verify the Script Property points to the correct venue's web app URL after any deployment.
 

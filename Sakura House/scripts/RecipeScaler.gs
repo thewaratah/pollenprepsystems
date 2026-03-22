@@ -6,7 +6,7 @@
  *
  * Usage: Deploy as web app, access with ?recipe=RecipeName or ?recipeId=recXXX
  *
- * @version 1.0
+ * @version 1.1
  */
 
 // =============================================================================
@@ -143,12 +143,16 @@ function getRecipeList() {
   const baseId = props.getProperty('AIRTABLE_BASE_ID');
   const pat = props.getProperty('AIRTABLE_PAT');
 
-  // Fetch recipes with Recipe Name field (lookup field that shows item name)
-  const recipesUrl = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(SCALER_CONFIG.airtable.tables.recipes)}?fields[]=Recipe%20Name&fields[]=Yield%20Qty`;
+  // Fetch active recipes with Recipe Name field (text field showing item name)
+  const recipesUrl = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(SCALER_CONFIG.airtable.tables.recipes)}?fields[]=Recipe%20Name&fields[]=Yield%20Qty&filterByFormula=${encodeURIComponent('{Active}=TRUE()')}`;
 
   const recipesResponse = UrlFetchApp.fetch(recipesUrl, {
-    headers: { 'Authorization': `Bearer ${pat}` }
+    headers: { 'Authorization': `Bearer ${pat}` },
+    muteHttpExceptions: true
   });
+  if (recipesResponse.getResponseCode() !== 200) {
+    throw new Error(`Airtable recipes fetch failed (${recipesResponse.getResponseCode()}): ${recipesResponse.getContentText()}`);
+  }
   const recipesData = JSON.parse(recipesResponse.getContentText());
 
   // Map recipes - Recipe Name is a text/lookup field
@@ -186,8 +190,12 @@ function getRecipeDetails(recipeIdentifier) {
     // It's a record ID - fetch directly
     const url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(SCALER_CONFIG.airtable.tables.recipes)}/${recipeIdentifier}`;
     const response = UrlFetchApp.fetch(url, {
-      headers: { 'Authorization': `Bearer ${pat}` }
+      headers: { 'Authorization': `Bearer ${pat}` },
+      muteHttpExceptions: true
     });
+    if (response.getResponseCode() !== 200) {
+      throw new Error(`Airtable recipe fetch failed (${response.getResponseCode()}): ${response.getContentText()}`);
+    }
     recipeRecord = JSON.parse(response.getContentText());
   } else {
     throw new Error('Please use recipe ID for lookup');
@@ -211,8 +219,12 @@ function getRecipeDetails(recipeIdentifier) {
     if (offset) linesUrl += `&offset=${offset}`;
 
     const linesResponse = UrlFetchApp.fetch(linesUrl, {
-      headers: { 'Authorization': `Bearer ${pat}` }
+      headers: { 'Authorization': `Bearer ${pat}` },
+      muteHttpExceptions: true
     });
+    if (linesResponse.getResponseCode() !== 200) {
+      throw new Error(`Airtable recipe lines fetch failed (${linesResponse.getResponseCode()}): ${linesResponse.getContentText()}`);
+    }
     const linesData = JSON.parse(linesResponse.getContentText());
     allLines = allLines.concat(linesData.records || []);
     offset = linesData.offset || null;
@@ -234,8 +246,12 @@ function getRecipeDetails(recipeIdentifier) {
     if (itemsOffset) itemsUrl += `&offset=${itemsOffset}`;
 
     const itemsResponse = UrlFetchApp.fetch(itemsUrl, {
-      headers: { 'Authorization': `Bearer ${pat}` }
+      headers: { 'Authorization': `Bearer ${pat}` },
+      muteHttpExceptions: true
     });
+    if (itemsResponse.getResponseCode() !== 200) {
+      throw new Error(`Airtable items fetch failed (${itemsResponse.getResponseCode()}): ${itemsResponse.getContentText()}`);
+    }
     const itemsData = JSON.parse(itemsResponse.getContentText());
 
     for (const item of (itemsData.records || [])) {

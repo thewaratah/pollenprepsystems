@@ -11,7 +11,7 @@
  * - Slack notifications to admin
  * - Airtable logging for tracking
  *
- * @version 1.0
+ * @version 1.1
  */
 
 // =============================================================================
@@ -30,8 +30,8 @@ const FEEDBACK_CONFIG = {
     }
   },
   feedbackTypes: ['Missing Data', 'Recipe Issue', 'Suggestion', 'Other'],
-  docTypes: ['Ingredient Prep List', 'Batching List', 'Andie Ordering', 'Blade Ordering'],
-  staffRoles: ['Prep Team', 'Ordering - Andie', 'Ordering - Blade', 'Manager', 'Other'],
+  docTypes: ['Ingredient Prep List', 'Batching List', 'Combined Ordering'],
+  staffRoles: ['Prep Team', 'Ordering', 'Manager', 'Other'],
   aiCategories: ['Data Fix', 'Recipe Update', 'General'],
   timeZone: 'Australia/Sydney'
 };

@@ -34,14 +34,13 @@ Both files share the same hybrid template engine (v4.2) and DocumentApp API patt
 
 ## Document Architecture (Waratah)
 
-The PREP system generates 4 document types per run. Each uses the hybrid template engine:
+The PREP system generates 3 document types per run. Each uses the hybrid template engine:
 
 | Document | Template Script Property | Ordering Staff |
 |----------|-------------------------|---------------|
 | Ingredient Prep Run Sheet | `WARATAH_TEMPLATE_INGREDIENT_PREP_ID` | — |
 | Batching Run Sheet | `WARATAH_TEMPLATE_BATCHING_ID` | — |
-| Andie Ordering Run Sheet | `WARATAH_TEMPLATE_ANDIE_ORDERING_ID` | Andie |
-| Blade Ordering Run Sheet | `WARATAH_TEMPLATE_BLADE_ORDERING_ID` | Blade |
+| Combined Ordering Run Sheet | `WARATAH_TEMPLATE_ORDERING_ID` | Andie + Blade (sections) |
 
 Each document has **two code paths that must stay in sync:**
 - **Template path** (`createXxxFromTemplate_`): insert-index (`body.insertParagraph(idx++, ...)`)

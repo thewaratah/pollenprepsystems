@@ -76,8 +76,8 @@ const CFG = {
       recipes: "Recipes",
       recipeLines: "Recipe Lines",
       supplier: "Supplier",
-      parLevels: "Par Levels",           // ⚠️ TABLE NAME ASSUMED — verify against Airtable base
-      weeklyCounts: "Weekly Counts",     // ⚠️ TABLE NAME ASSUMED — verify against Airtable base
+      parLevels: "Par Levels",
+      weeklyCounts: "Weekly Counts",
       stockOrders: "Stock Orders",
       countSessions: "Count Sessions",
     },
@@ -107,7 +107,7 @@ const CFG = {
       itemType: "Item Type",
       itemUnit: "Unit",
 
-      recipeName: "Recipe Name",
+      recipeName: "Item Name",  // Waratah uses linked record "Item Name", not "Recipe Name"
       recipeMethod: "Method",
 
       rlRecipe: "Recipe",
@@ -115,16 +115,14 @@ const CFG = {
       rlQty: "Qty",
 
       // Par Levels table fields
-      // ⚠️ FIELD NAMES ASSUMED — verify against Airtable base
-      parItem: "Item Link",   // linked record field pointing to Items table
-      parQty: "Prep Qty",     // numeric par quantity
+      parItem: "Item Link",
+      parQty: "Prep Qty",
 
       // Weekly Counts table fields
-      // ⚠️ FIELD NAMES ASSUMED — verify against Airtable base
-      wcItem: "Item",              // linked record field pointing to Items table
-      wcStockCount: "Stock Count", // numeric stock on hand
-      wcConfirmed: "Confirmed",    // checkbox — true when count is verified
-      wcCountDate: "Count Date",   // date field for recency resolution
+      wcItem: "Item",
+      wcStockCount: "Stock Count",
+      wcConfirmed: "Confirmed",
+      wcCountDate: "Count Date",
 
       supplierName: "Supplier Name",
       supplierOrderingStaff: "Ordering Staff",
