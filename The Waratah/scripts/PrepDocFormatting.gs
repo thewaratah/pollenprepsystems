@@ -437,40 +437,8 @@ function insertAdditionalTasks_(body, idx) {
  * @param {number[]} colWidths - Column widths in points
  */
 function appendDataTable_(body, headers, rows, colWidths) {
-  var s = CFG.docStyle;
-  var allRows = [headers].concat(rows);
-  var table = body.appendTable(allRows);
-
-  table.setBorderColor(s.table.borderColor);
-  table.setBorderWidth(s.table.borderWidth);
-  colWidths.forEach(function(w, i) { table.setColumnWidth(i, w); });
-
-  // Header row
-  var headerRow = table.getRow(0);
-  for (var c = 0; c < headerRow.getNumCells(); c++) {
-    var cell = headerRow.getCell(c);
-    cell.setBackgroundColor(s.table.headerBg);
-    cell.setPaddingTop(s.table.cellPadding).setPaddingBottom(s.table.cellPadding)
-        .setPaddingLeft(s.table.cellPadding + 2).setPaddingRight(s.table.cellPadding);
-    cell.editAsText().setForegroundColor(s.table.headerText)
-        .setBold(true).setFontFamily(s.font).setFontSize(10);
-  }
-
-  // Data rows
-  for (var r = 1; r < table.getNumRows(); r++) {
-    var row = table.getRow(r);
-    var bg = (r % 2 === 0) ? s.table.altRowBg : "#FFFFFF";
-    for (var c2 = 0; c2 < row.getNumCells(); c2++) {
-      var dc = row.getCell(c2);
-      dc.setBackgroundColor(bg);
-      dc.setPaddingTop(3).setPaddingBottom(3).setPaddingLeft(6).setPaddingRight(4);
-      var text = dc.editAsText();
-      text.setFontFamily(s.font).setFontSize(10).setForegroundColor(s.colors.bodyText);
-      if (headers[c2] === "\u2610") {
-        text.setFontFamily(s.checkboxFont);
-      }
-    }
-  }
+  var table = body.appendTable([headers].concat(rows));
+  styleTable_(table, headers, colWidths);
 }
 
 function appendBullet_(body, text) {
@@ -504,42 +472,73 @@ function appendMultiline_(body, text) {
  * @returns {number} updated idx (idx + 1)
  */
 function insertDataTable_(body, idx, headers, rows, colWidths) {
-  const s = CFG.docStyle;
-  const allRows = [headers, ...rows];
-  const table = body.insertTable(idx, allRows);
+  var s = CFG.docStyle;
+  var table = body.insertTable(idx, [headers].concat(rows));
+  styleTable_(table, headers, colWidths);
+  return idx + 1;
+}
+
+/**
+ * Shared table styling logic used by both insert and append table builders.
+ * Uses setAttributes() for batched property setting (performance: ~1000 fewer API calls per doc).
+ */
+function styleTable_(table, headers, colWidths) {
+  var s = CFG.docStyle;
+  var A = DocumentApp.Attribute;
 
   table.setBorderColor(s.table.borderColor);
   table.setBorderWidth(s.table.borderWidth);
-  colWidths.forEach((w, i) => table.setColumnWidth(i, w));
+  colWidths.forEach(function(w, i) { table.setColumnWidth(i, w); });
+
+  // Build attribute maps once
+  var headerCellAttrs = {};
+  headerCellAttrs[A.BACKGROUND_COLOR] = s.table.headerBg;
+  headerCellAttrs[A.PADDING_TOP] = s.table.cellPadding;
+  headerCellAttrs[A.PADDING_BOTTOM] = s.table.cellPadding;
+  headerCellAttrs[A.PADDING_LEFT] = s.table.cellPadding + 2;
+  headerCellAttrs[A.PADDING_RIGHT] = s.table.cellPadding;
+
+  var headerTextAttrs = {};
+  headerTextAttrs[A.FOREGROUND_COLOR] = s.table.headerText;
+  headerTextAttrs[A.BOLD] = true;
+  headerTextAttrs[A.FONT_FAMILY] = s.font;
+  headerTextAttrs[A.FONT_SIZE] = 10;
+
+  var dataCellBase = {};
+  dataCellBase[A.PADDING_TOP] = 3;
+  dataCellBase[A.PADDING_BOTTOM] = 3;
+  dataCellBase[A.PADDING_LEFT] = 6;
+  dataCellBase[A.PADDING_RIGHT] = 4;
+
+  var dataTextBase = {};
+  dataTextBase[A.FONT_FAMILY] = s.font;
+  dataTextBase[A.FONT_SIZE] = 10;
+  dataTextBase[A.FOREGROUND_COLOR] = s.colors.bodyText;
 
   // Header row
-  const headerRow = table.getRow(0);
-  for (let c = 0; c < headerRow.getNumCells(); c++) {
-    const cell = headerRow.getCell(c);
-    cell.setBackgroundColor(s.table.headerBg);
-    cell.setPaddingTop(s.table.cellPadding).setPaddingBottom(s.table.cellPadding)
-        .setPaddingLeft(s.table.cellPadding + 2).setPaddingRight(s.table.cellPadding);
-    cell.editAsText().setForegroundColor(s.table.headerText)
-        .setBold(true).setFontFamily(s.font).setFontSize(10);
+  var headerRow = table.getRow(0);
+  for (var c = 0; c < headerRow.getNumCells(); c++) {
+    headerRow.getCell(c).setAttributes(headerCellAttrs);
+    headerRow.getCell(c).editAsText().setAttributes(headerTextAttrs);
   }
 
   // Data rows (alternating backgrounds)
-  for (let r = 1; r < table.getNumRows(); r++) {
-    const row = table.getRow(r);
-    const bg = (r % 2 === 0) ? s.table.altRowBg : "#FFFFFF";
-    for (let c = 0; c < row.getNumCells(); c++) {
-      const cell = row.getCell(c);
-      cell.setBackgroundColor(bg);
-      cell.setPaddingTop(3).setPaddingBottom(3).setPaddingLeft(6).setPaddingRight(4);
-      const text = cell.editAsText();
-      text.setFontFamily(s.font).setFontSize(10).setForegroundColor(s.colors.bodyText);
-      if (headers[c] === "\u2610") {
-        text.setFontFamily(s.checkboxFont);
+  for (var r = 1; r < table.getNumRows(); r++) {
+    var row = table.getRow(r);
+    dataCellBase[A.BACKGROUND_COLOR] = (r % 2 === 0) ? s.table.altRowBg : "#FFFFFF";
+    for (var c2 = 0; c2 < row.getNumCells(); c2++) {
+      row.getCell(c2).setAttributes(dataCellBase);
+      if (headers[c2] === "\u2610") {
+        var cbAttrs = {};
+        cbAttrs[A.FONT_FAMILY] = s.checkboxFont;
+        cbAttrs[A.FONT_SIZE] = 10;
+        cbAttrs[A.FOREGROUND_COLOR] = s.colors.bodyText;
+        row.getCell(c2).editAsText().setAttributes(cbAttrs);
+      } else {
+        row.getCell(c2).editAsText().setAttributes(dataTextBase);
       }
     }
   }
-
-  return idx + 1;
 }
 
 /**
