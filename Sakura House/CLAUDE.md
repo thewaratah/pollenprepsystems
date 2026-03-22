@@ -203,9 +203,12 @@ Configure in Google Apps Script → Project Settings → Script Properties:
 | `DOCS_FOLDER_ID` | Google Drive folder for generated docs |
 | `SLACK_WEBHOOK_GOOCH` | Gooch's Slack channel webhook |
 | `SLACK_WEBHOOK_SABS` | Sabs' Slack channel webhook |
+| `SLACK_WEBHOOK_KALISHA` | Kalisha's Slack channel webhook |
+| `SLACK_WEBHOOK_EVAN` | Evan's Slack channel webhook |
 | `SLACK_WEBHOOK_PREP` | Prep team channel webhook |
 | `SLACK_WEBHOOK_EV_TEST` | Test channel + feedback notifications |
 | `MANUAL_TRIGGER_SECRET` | Webhook auth secret |
+| `SUPPLIER_SHEET_URL` | Airtable supplier sheet URL (shown in fallback docs) |
 | `TEMPLATE_ORDERING_ID` | Ordering list template doc ID |
 | `TEMPLATE_BATCHING_ID` | Batching list template doc ID |
 | `TEMPLATE_INGREDIENT_PREP_ID` | Ingredient prep template doc ID |

@@ -1,6 +1,6 @@
 # PREP SYSTEMS — Navigation Guide
 
-**Last Updated:** 2026-03-21
+**Last Updated:** 2026-03-23
 **Project Type:** Multi-venue kitchen prep automation (Airtable + GAS + Google Docs + Slack)
 **Venues:** Sakura House, The Waratah
 
@@ -26,6 +26,7 @@
 | Live Airtable data access, querying records via MCP | `airtable-mcp-agent` |
 | Recipe Scaler (`RecipeScaler.gs`) | `recipe-scaler-agent` |
 | Cross-venue schema comparison or audit | `airtable-mcp-agent` via `/audit` |
+| Fix applied to a Tier 1/2 shared file (see `docs/SHARED_PATTERNS_REGISTRY.md`) | `parity-check-agent` after venue agent completes — backport if violation found |
 
 ---
 
@@ -47,6 +48,7 @@
 | `/airtable-mcp [task]` | Live Airtable record queries via MCP (read/inspect data, not schema) |
 | `/scaler [task]` | Recipe Scaler GAS + UI |
 | `/gas-docs [task]` | Google Docs formatting in GAS — DocumentApp API, hybrid template engine, insertXxx_/appendXxx_ helpers |
+| `/parity [scope]` | Cross-venue parity check — detects missing backports between venues (`all`, `utilities`, or filename) |
 | `/audit [scope]` | Cross-venue Airtable schema comparison via MCP (defaults to Items + Recipes tables) |
 | `/update-scripts-docs [what changed]` | Update Sakura Advanced Script & Automation docs after script changes |
 | `/push-advanced-docs` | Push Sakura Advanced Script & Automation docs to Google Drive (manual only) |
@@ -68,6 +70,7 @@ Specialist agents live in `.claude/agents/`. Claude invokes them via the Task to
 | Recipe Scaler backend or UI changed | `recipe-scaler-agent` — verify per-venue web app URL |
 | Significant code change completed | `documentation-agent` to update relevant CLAUDE.md + docs |
 | Ready to `clasp push` | `documentation-agent` first, then `deployment-agent` pre-deploy checklist |
+| Tier 1/Tier 2 file edited (per `docs/SHARED_PATTERNS_REGISTRY.md`) | `parity-check-agent` — check counterpart venue for missing backport |
 | Waratah: any GAS deployment | `documentation-agent` first, then `deployment-agent` — verify `.claspignore` before every push |
 
 **Single entry point for non-trivial tasks:** describe the task to `prep-orchestrator` and it will route and parallelise automatically.
@@ -168,4 +171,4 @@ PREP Systems/
 ---
 
 **Status:** Both venues fully operational and production-ready ✅
-**Last Updated:** 2026-03-21
+**Last Updated:** 2026-03-23

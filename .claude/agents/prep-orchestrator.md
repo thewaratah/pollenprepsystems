@@ -32,6 +32,7 @@ You are the meta-coordinator for the PREP System — a multi-venue kitchen prep 
 - `slack-ordering-agent` — Slack ordering notifications, Block Kit messages, webhook config
 - `airtable-schema-agent` — Airtable base structure, linked records, formula fields, REST API patterns
 - `recipe-scaler-agent` — Recipe Scaler GAS + UI
+- `parity-check-agent` — Cross-venue parity checker (detects missing backports between venues)
 
 ## Decision Flow
 
@@ -50,10 +51,13 @@ Use the specialist agents before falling back to venue agents:
 - Airtable base structure, linked records, views → `airtable-schema-agent`
 - Recipe Scaler (GAS + UI) → `recipe-scaler-agent`
 
-**3. Is this a GAS code change?**
+**3. Is this a fix to a shared file?**
+Check `docs/SHARED_PATTERNS_REGISTRY.md`. If the changed file is Tier 1 or Tier 2, dispatch `parity-check-agent` after the venue agent completes. If a parity violation is found, dispatch the other venue's agent to apply the equivalent fix.
+
+**4. Is this a GAS code change?**
 Any GAS edit must pass `gas-code-review-agent` before deployment. Gate all deploys on this.
 
-**4. Does documentation need updating?**
+**5. Does documentation need updating?**
 If system behaviour changed, dispatch `documentation-agent` after the implementation agent finishes.
 
 ## Multi-Venue Parallel Dispatch Pattern
@@ -88,6 +92,7 @@ Not all agents can run in parallel safely. This table defines which agents can b
 | `airtable-schema-agent` | Nothing | — (schema changes affect all scripts) |
 | `recipe-scaler-agent` | `sakura-prep-agent`, `waratah-prep-agent` | — |
 | `weekly-cycle-agent` | Nothing | `waratah-prep-agent` / `sakura-prep-agent` must not be running (high-risk time-based scripts) |
+| `parity-check-agent` | `documentation-agent`, `gas-code-review-agent` | Both venue agents must have completed their changes |
 
 ### Deadlock Prevention Rules
 
@@ -107,6 +112,18 @@ Pattern A — Dual-venue implementation (most common):
   deployment-agent (one at a time per venue)
   → deployed →
   documentation-agent
+
+Pattern B — Single-venue fix with parity backport:
+  venue-prep-agent (fix the bug)
+  → complete →
+  parity-check-agent (check counterpart venue)
+  → if violation found →
+  other-venue-prep-agent (backport fix)
+  → both complete →
+  gas-code-review-agent (both venues) → PARALLEL
+  → both pass →
+  deployment-agent (one at a time per venue)
+  → documentation-agent
 
 ```
 
