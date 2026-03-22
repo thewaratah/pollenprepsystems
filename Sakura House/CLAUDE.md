@@ -20,7 +20,11 @@ Sakura House/
 │   ├── FinaliseCount.gs              # Airtable: validate & lock stocktake
 │   ├── GeneratePrepRun.gs            # Airtable: generate prep tasks (v3.0)
 │   ├── GeneratePrepSheet.gs          # Airtable: export request processor
-│   ├── GoogleDocsPrepSystem.gs       # GAS: main doc exporter + Slack (v4.2)
+│   ├── PrepConfig.gs                # GAS: CFG object + global vars
+│   ├── PrepUtils.gs                 # GAS: Airtable REST, Drive helpers, utilities
+│   ├── PrepDocFormatting.gs         # GAS: template engine + formatting helpers
+│   ├── PrepDocGenerators.gs         # GAS: all doc generators (ordering, batching, prep)
+│   ├── GoogleDocsPrepSystem.gs      # GAS: orchestrator + Slack + polling (v4.2)
 │   ├── GoogleDocsPrepSystem_TestHarness.gs  # GAS: test harness
 │   ├── FeedbackForm.gs              # GAS: staff feedback web app (v1.1)
 │   ├── FeedbackFormUI.html          # Feedback form UI
@@ -118,7 +122,11 @@ These are pushed to Google Apps Script via clasp and run in the cloud.
 
 | Script | Version | Purpose |
 |--------|---------|---------|
-| `GoogleDocsPrepSystem.gs` | v4.2 | Hybrid template engine: generate 4 Google Docs + Slack notifications |
+| `PrepConfig.gs` | v4.2 | CFG object + global override vars |
+| `PrepUtils.gs` | v4.2 | Airtable REST API, Drive helpers, pure utilities |
+| `PrepDocFormatting.gs` | v4.2 | Template engine v4.2 + formatting helpers |
+| `PrepDocGenerators.gs` | v4.2 | All doc generators (ordering, batching, ingredient prep) |
+| `GoogleDocsPrepSystem.gs` | v4.2 | Orchestrator + Slack notifications + polling |
 | `FeedbackForm.gs` | v1.1 | Staff feedback collection with AI triage |
 | `RecipeScaler.gs` | v1.1 | Constraint-based recipe scaling web app |
 

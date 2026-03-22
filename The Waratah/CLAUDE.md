@@ -40,8 +40,12 @@ The Waratah PREP system uses a two-script architecture:
 - `Waratah_CompleteStockCount.gs` - Button-triggered: advances "In Progress" session to "Completed" (pre-flight checks all items have tallies; triggers ValidateStockCount automation)
 - `Waratah_ExportOrderingDoc.gs` - Trigger ordering doc export via GAS polling (sets "Ordering Export State" = REQUESTED on Count Sessions)
 
-**2. Google Apps Script** (run in GAS environment)
-- `GoogleDocsPrepSystem.gs` - Main export processor + Slack notifications + ordering export polling (`processOrderingExportRequests()`)
+**2. Google Apps Script** (run in GAS environment, split into 5 files — all deploy as one namespace)
+- `PrepConfig.gs` - CFG object + global override vars
+- `PrepUtils.gs` - Airtable REST API, Drive helpers, pure utilities
+- `PrepDocFormatting.gs` - Template engine v4.2 + formatting helpers
+- `PrepDocGenerators.gs` - All doc generators (batching, ingredient prep, combined ordering)
+- `GoogleDocsPrepSystem.gs` - Orchestrator + Slack + polling + healthCheck
 - `FeedbackForm.gs` - Feedback collection backend
 - `FeedbackFormUI.html` - Feedback form UI
 - `RecipeScaler.gs` - Recipe scaling backend
@@ -811,12 +815,16 @@ The `scripts/` folder is configured for Google Apps Script deployment using clas
 - `.claspignore` - Excludes Airtable scripts from GAS deployment
 - `appsscript.json` - Apps Script manifest
 
-**What Gets Deployed:**
-- ✅ `GoogleDocsPrepSystem.gs` - Main export processor
+**What Gets Deployed (10 files):**
+- ✅ `PrepConfig.gs` - CFG object + globals
+- ✅ `PrepUtils.gs` - Airtable REST, Drive helpers, utilities
+- ✅ `PrepDocFormatting.gs` - Template engine + formatting
+- ✅ `PrepDocGenerators.gs` - All doc generators
+- ✅ `GoogleDocsPrepSystem.gs` - Orchestrator + Slack + polling + healthCheck
 - ✅ `FeedbackForm.gs` + `FeedbackFormUI.html` - Feedback system
 - ✅ `RecipeScaler.gs` + `RecipeScalerUI.html` - Recipe scaler
 - ❌ `Waratah_*.gs` - Excluded (Airtable-only)
-- ❌ `*.py`, `*.sql`, `*.sh` - Excluded
+- ❌ `Debug.gs`, `*.py`, `*.sql`, `*.sh` - Excluded
 
 **Deployment Commands:**
 

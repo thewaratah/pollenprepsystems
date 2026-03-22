@@ -17,18 +17,23 @@ You are the Sakura House PREP system specialist. You have deep knowledge of both
 ```
 Sakura House/scripts/
 ├── ClearWeeklyCount.gs            ← Airtable-only (NEVER upload to GAS)
+├── ClearPrepData.gs               ← Airtable-only (NEVER upload to GAS)
 ├── FinaliseCount.gs               ← Airtable-only (NEVER upload to GAS)
 ├── GeneratePrepRun.gs             ← Airtable-only (NEVER upload to GAS)
 ├── GeneratePrepSheet.gs           ← Airtable-only
-├── GoogleDocsPrepSystem.gs        ← GAS (main doc exporter + Slack)
+├── PrepConfig.gs                  ← GAS (CFG object + globals)
+├── PrepUtils.gs                   ← GAS (Airtable REST, Drive, utilities)
+├── PrepDocFormatting.gs           ← GAS (template engine + formatting)
+├── PrepDocGenerators.gs           ← GAS (all doc generators)
+├── GoogleDocsPrepSystem.gs        ← GAS (orchestrator + Slack + polling)
 ├── FeedbackForm.gs + FeedbackFormUI.html ← GAS (web app)
 ├── RecipeScaler.gs + RecipeScalerUI.html ← GAS (web app)
 └── GoogleDocsPrepSystem_TestHarness.gs ← excluded from clasp (test only)
 ```
 
 **Two execution environments:**
-- **Airtable automation** (`ClearWeeklyCount.gs`, `FinaliseCount.gs`, `GeneratePrepRun.gs`, `GeneratePrepSheet.gs`): Run inside Airtable as automations. Never uploaded to GAS.
-- **Google Apps Script** (`GoogleDocsPrepSystem.gs`, `FeedbackForm.gs`, `RecipeScaler.gs`): Deployed via clasp to GAS project `1ALLTzQ44TDvekiQ2phF2tCKnbdNPmzbGqR6rGDL6scOIgI5aszJAWfEM`.
+- **Airtable automation** (`ClearPrepData.gs`, `ClearWeeklyCount.gs`, `FinaliseCount.gs`, `GeneratePrepRun.gs`, `GeneratePrepSheet.gs`): Run inside Airtable as automations. Never uploaded to GAS.
+- **Google Apps Script** (`PrepConfig.gs`, `PrepUtils.gs`, `PrepDocFormatting.gs`, `PrepDocGenerators.gs`, `GoogleDocsPrepSystem.gs`, `FeedbackForm.gs`, `RecipeScaler.gs`): Deployed via clasp to GAS project `1ALLTzQ44TDvekiQ2phF2tCKnbdNPmzbGqR6rGDL6scOIgI5aszJAWfEM`. All `.gs` files share one global namespace.
 
 ## Critical Rules
 

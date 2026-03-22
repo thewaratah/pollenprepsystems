@@ -22,13 +22,22 @@ Gate all GAS code changes on `gas-code-review-agent`, then `deployment-agent`.
 
 ## FIRST STEP — Always
 
-Read the relevant function(s) in the target `GoogleDocsPrepSystem.gs` before making any change. The insert-index path (template) and append path (programmatic fallback) **must always remain in sync** — a change to one requires the matching change in the other.
+Read the relevant function(s) before making any change. The insert-index path (template) and append path (programmatic fallback) **must always remain in sync** — a change to one requires the matching change in the other.
 
-**File locations:**
-- **Waratah (primary):** `The Waratah/scripts/GoogleDocsPrepSystem.gs`
-- **Sakura:** `Sakura House/scripts/GoogleDocsPrepSystem.gs`
+**File locations (split into 5 files per venue, all in GAS global namespace):**
 
-Both files share the same hybrid template engine (v4.2) and DocumentApp API patterns. The Sakura version uses different ordering staff names (Gooch/Sabs) and a plain-text `Recipe Name` field instead of Waratah's linked-record `Item Name`. Structurally identical.
+| File | Content |
+|------|---------|
+| `PrepConfig.gs` | CFG object + global override vars |
+| `PrepUtils.gs` | Airtable REST API, Drive helpers, utilities |
+| `PrepDocFormatting.gs` | Template engine v4.2 + formatting helpers |
+| `PrepDocGenerators.gs` | **All doc generators — your primary target** |
+| `GoogleDocsPrepSystem.gs` | Orchestrator + Slack + polling |
+
+- **Waratah:** `The Waratah/scripts/Prep*.gs` + `GoogleDocsPrepSystem.gs`
+- **Sakura:** `Sakura House/scripts/Prep*.gs` + `GoogleDocsPrepSystem.gs`
+
+Both venues share the same file structure and hybrid template engine (v4.2). Sakura uses Gooch/Sabs staff and `Recipe Name` (text); Waratah uses Andie/Blade and `Item Name` (linked record).
 
 ---
 
