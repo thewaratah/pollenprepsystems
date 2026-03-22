@@ -72,6 +72,7 @@ const CFG = {
     templateBatching: "TEMPLATE_BATCHING_ID",
     templateIngredientPrep: "TEMPLATE_INGREDIENT_PREP_ID",
     feedbackFormUrl: "FEEDBACK_FORM_URL",
+    supplierSheetUrl: "SUPPLIER_SHEET_URL",
   },
 
   airtable: {
@@ -1374,12 +1375,12 @@ function createOrReplaceBatchingDoc_(folder, title, dateFormatted, batchTasks, l
   doc.setName(title);
 
   const body = doc.getBody();
-  body.clear();
+  body.clearContent();
 
   body.appendParagraph(title).setHeading(DocumentApp.ParagraphHeading.HEADING1);
   body.appendParagraph(dateFormatted).setHeading(DocumentApp.ParagraphHeading.SUBTITLE);
 
-  const reminderBatching = body.appendParagraph("Add email contacts to supplier sheet, located here: https://airtable.com/appNsFRhuU47e9qlR/shrRpMHW3iFHsCkgY");
+  const reminderBatching = body.appendParagraph("Add email contacts to supplier sheet, located here: " + (getOptionalProp_(CFG.props.supplierSheetUrl) || "https://airtable.com"));
   reminderBatching.editAsText().setBold(true).setUnderline(true);
 
   // Add feedback link
@@ -1458,12 +1459,12 @@ function createOrReplaceIngredientPrepDoc_(folder, title, dateFormatted, batchTa
   doc.setName(title);
 
   const body = doc.getBody();
-  body.clear();
+  body.clearContent();
 
   body.appendParagraph(title).setHeading(DocumentApp.ParagraphHeading.HEADING1);
   body.appendParagraph(dateFormatted).setHeading(DocumentApp.ParagraphHeading.SUBTITLE);
 
-  const reminderIngredient = body.appendParagraph("Add email contacts to supplier sheet, located here: https://airtable.com/appNsFRhuU47e9qlR/shrRpMHW3iFHsCkgY");
+  const reminderIngredient = body.appendParagraph("Add email contacts to supplier sheet, located here: " + (getOptionalProp_(CFG.props.supplierSheetUrl) || "https://airtable.com"));
   reminderIngredient.editAsText().setBold(true).setUnderline(true);
 
   // Add feedback link
@@ -1786,12 +1787,12 @@ function createOrReplaceOrderingDoc_(folder, title, dateFormatted, owner, data, 
   doc.setName(title);
 
   const body = doc.getBody();
-  body.clear();
+  body.clearContent();
 
   body.appendParagraph(title).setHeading(DocumentApp.ParagraphHeading.HEADING1);
   body.appendParagraph(dateFormatted).setHeading(DocumentApp.ParagraphHeading.SUBTITLE);
 
-  const reminderOrdering = body.appendParagraph("Add email contacts to supplier sheet, located here: https://airtable.com/appNsFRhuU47e9qlR/shrRpMHW3iFHsCkgY");
+  const reminderOrdering = body.appendParagraph("Add email contacts to supplier sheet, located here: " + (getOptionalProp_(CFG.props.supplierSheetUrl) || "https://airtable.com"));
   reminderOrdering.editAsText().setBold(true).setUnderline(true);
 
   // Add feedback link

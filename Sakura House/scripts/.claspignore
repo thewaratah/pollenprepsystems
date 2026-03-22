@@ -1,4 +1,5 @@
 # Airtable automation scripts (local backups only - not for Google Apps Script)
+ClearPrepData.gs
 ClearWeeklyCount.gs
 FinaliseCount.gs
 GeneratePrepRun.gs

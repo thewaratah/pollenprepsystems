@@ -328,7 +328,7 @@ async function main() {
       [CONFIG.countItemLinkField]: [{ id: itemId }],
       [CONFIG.countQtyField]: 0,
       [CONFIG.countDateField]: now,
-      [CONFIG.countSourceField]: { name: CONFIG.verifiedSourceName },
+      [CONFIG.countSourceField]: { name: CONFIG.placeholderSourceName },
       [CONFIG.countConfirmedField]: false,
     }
   }));

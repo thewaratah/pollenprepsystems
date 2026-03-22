@@ -21,8 +21,8 @@ Sakura House/Reference/
 .DS_Store
 Thumbs.db
 
-# Claude/IDE
-.claude/
+# Claude/IDE (track .claude/agents and .claude/commands, ignore settings)
+.claude/settings.local.json
 
 # Logs
 *.log
