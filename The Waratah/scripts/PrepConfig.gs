@@ -121,6 +121,28 @@ const CFG = {
   },
 
   bufferMultiplier: 1.5,
+
+  docStyle: {
+    font: "Avenir",
+    checkboxFont: "Noto Sans Symbols 2",
+    colors: {
+      primary: "#4A5D23",
+      primaryDark: "#2D3A16",
+      bodyText: "#1a1a1a",
+      mutedText: "#666666",
+      linkColor: "#007AFF",
+    },
+    table: {
+      borderColor: "#D0D0D0",
+      borderWidth: 0.5,
+      headerBg: "#4A5D23",
+      headerText: "#FFFFFF",
+      altRowBg: "#F5F7F0",
+      cellPadding: 4,
+      colWidths: { item: 260, qty: 70, unit: 60, check: 30 },
+      summaryWidths: [160, 300],
+    },
+  },
 };
 
 let SLACK_WEBHOOK_OVERRIDE = null;

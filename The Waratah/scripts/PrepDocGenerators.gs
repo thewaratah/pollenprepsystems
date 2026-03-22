@@ -79,18 +79,24 @@ function createBatchingDocFromTemplate_(folder, title, dateFormatted, runLabel, 
   removeElementsContainingText_(body, "No recipe linked");
   removeElementsContainingText_(body, "No recipe lines");
 
-  // Insert feedback link at the top of content
-  insertIndex = insertFeedbackLink_(body, insertIndex, runId, title, staffRole);
-
-  // Additional Tasks section (blank lines for handwritten tasks)
-  insertIndex = insertAdditionalTasks_(body, insertIndex);
-
-  // Append content programmatically
-  // Pre-filter batches that have a recipe with at least one line
+  // Summary info table
   const visibleBatchTasks = batchTasks.filter((t) => {
     if (!t.recipeId) return false;
     return (linesByRecipeId[t.recipeId] || []).length > 0;
   });
+
+  insertIndex = insertSummaryInfo_(body, insertIndex, [
+    ["Document", "Batching Run Sheet"],
+    ["Date", dateFormatted],
+    ["Prep Run", runLabel],
+    ["Total Batches", String(visibleBatchTasks.length)],
+  ]);
+
+  // Insert feedback link
+  insertIndex = insertFeedbackLink_(body, insertIndex, runId, title, staffRole);
+
+  // Additional Tasks section (checkboxes for handwritten tasks)
+  insertIndex = insertAdditionalTasks_(body, insertIndex);
 
   if (!visibleBatchTasks.length) {
     body.insertParagraph(insertIndex, "No Batch tasks with ingredients found.");
@@ -98,76 +104,11 @@ function createBatchingDocFromTemplate_(folder, title, dateFormatted, runLabel, 
     let idx = insertIndex;
 
     visibleBatchTasks.forEach((t, i) => {
-      if (i > 0) body.insertHorizontalRule(idx++);
-      if (i > 0) body.insertPageBreak(idx++);
-
-      const batchPara = body.insertParagraph(idx++, t.itemName);
-      batchPara.setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
-      const toMakeText = `To Make: ${formatQtyWithBuffer_(t.targetQty, t.unit)}`.trim();
-      const toMakePara = body.insertParagraph(idx++, toMakeText);
-      toMakePara.setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
-      const baseQtyText = `${fmtQty_(t.targetQty)}${t.unit || ""}`;
-      appendTextWithBoldUnderline_(toMakePara, toMakeText, baseQtyText);
-
-      // Par level + stock counted lines (HEADING3) immediately after the item heading
-      idx = insertParStockLines_(body, idx, t);
-
-      // Add scaler link if configured
-      const scalerLink = getScalerLink_(t.recipeId);
-      if (scalerLink) {
-        const scalerPara = body.insertParagraph(idx++, "");
-        scalerPara.setFontFamily("Avenir");
-        scalerPara.appendText("📐 ").setFontSize(10).setFontFamily("Avenir");
-        scalerPara.appendText("Scale this recipe").setLinkUrl(scalerLink).setFontSize(10).setForegroundColor("#007AFF").setFontFamily("Avenir");
-        body.insertParagraph(idx++, "");
-      }
-
-      const lines = linesByRecipeId[t.recipeId] || [];
-      lines.forEach((ln) => {
-        const comp = itemsById[ln.itemId];
-        const compName = comp ? String(comp.fields[CFG.airtable.fields.itemName] || "(Unnamed Item)").replace(/[\r\n]+/g, " ").trim() : "(Unknown Item)";
-        const compUnit = comp ? cellToText_(comp.fields[CFG.airtable.fields.itemUnit]) : "";
-
-        const multiplier = t.batchesNeeded || 1;
-        const total = ln.qtyPerBatch * multiplier;
-        if (!Number.isFinite(total) || total === 0) return;
-
-        const bulletText = `${compName} ${formatQtyWithBuffer_(total, compUnit)}`.trim();
-        const li = body.insertListItem(idx++, bulletText);
-        li.setGlyphType(DocumentApp.GlyphType.BULLET).setFontFamily("Avenir");
-
-        const bulletBaseQty = `${fmtQty_(total)}${compUnit || ""}`;
-        appendTextWithBoldUnderline_(li, bulletText, bulletBaseQty);
+      idx = insertItemBlock_(body, idx, t, linesByRecipeId, itemsById, {
+        headingLevel: DocumentApp.ParagraphHeading.HEADING1,
+        showScaler: true,
+        pageBreak: i > 0,
       });
-
-      if ((t.method || "").trim()) {
-        const spacerPara = body.insertParagraph(idx++, "");
-
-        const methodHead = body.insertParagraph(idx++, "Method:");
-        methodHead.setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
-
-        const methodLines = String(t.method || "").split(/\r?\n/);
-        methodLines.forEach((ln) => {
-          const txt = ln.trim();
-          if (txt) {
-            body.insertParagraph(idx++, txt).setFontFamily("Avenir");
-          }
-        });
-      }
-
-      if ((t.notes || "").trim()) {
-        const notesHead = body.insertParagraph(idx++, "Notes:");
-        notesHead.editAsText().setBold(true).setFontFamily("Avenir");
-
-        const noteLines = String(t.notes || "").split(/\r?\n/);
-        noteLines.forEach((ln) => {
-          const txt = ln.trim();
-          if (txt) {
-            body.insertParagraph(idx++, txt).setFontFamily("Avenir");
-          }
-        });
-      }
-
     });
   }
 
@@ -218,110 +159,64 @@ function createIngredientPrepDocFromTemplate_(folder, title, dateFormatted, runL
   removeElementsContainingText_(body, "No prep tasks");
   removeElementsContainingText_(body, "No recipe linked");
 
-  // Insert feedback link at the top of content
-  insertIndex = insertFeedbackLink_(body, insertIndex, runId, title, staffRole);
-
-  // Additional Tasks section (blank lines for handwritten tasks)
-  insertIndex = insertAdditionalTasks_(body, insertIndex);
-
-  // Pre-filter batches to only those with sub-recipe requirements
+  // Pre-filter batches
   const batchesWithSubRecipes = batchTasks.filter((batch) => {
     return getSubRecipeRequirements_(batch, linesByRecipeId, itemsById, subTasksByItemId).length > 0;
   });
-
-  // Flat model fallback (e.g. Waratah): tasks are the top-level prep items with no nested sub-recipes.
   const tasksToRender = batchesWithSubRecipes.length ? null : batchTasks;
+  const totalItems = tasksToRender !== null ? (tasksToRender.length) :
+    (batchesWithSubRecipes.length + batchTasks.filter((t) => CFG.airtable.itemTypes.ingredientPrepOnly.has(t.itemType)).length);
 
+  // Summary info table
+  insertIndex = insertSummaryInfo_(body, insertIndex, [
+    ["Document", "Ingredient Prep Run Sheet"],
+    ["Date", dateFormatted],
+    ["Prep Run", runLabel],
+    ["Total Items", String(totalItems)],
+  ]);
+
+  // Insert feedback link
+  insertIndex = insertFeedbackLink_(body, insertIndex, runId, title, staffRole);
+
+  // Additional Tasks section (checkboxes)
+  insertIndex = insertAdditionalTasks_(body, insertIndex);
+
+  // FLAT MODEL (e.g. Waratah): tasks are top-level prep items, no nested sub-recipes
   if (tasksToRender !== null) {
     if (!tasksToRender.length) {
       body.insertParagraph(insertIndex, "No prep tasks found.");
     } else {
       let idx = insertIndex;
       tasksToRender.forEach((task, i) => {
-        if (i > 0) body.insertHorizontalRule(idx++);
-        if (i > 0) body.insertPageBreak(idx++);
-
-        const taskPara = body.insertParagraph(idx++, task.itemName);
-        taskPara.setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
-        const taskToMakeText = `To Make: ${formatQtyWithBuffer_(task.targetQty, task.unit)}`.trim();
-        const taskToMakePara = body.insertParagraph(idx++, taskToMakeText);
-        taskToMakePara.setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
-        appendTextWithBoldUnderline_(taskToMakePara, taskToMakeText, `${fmtQty_(task.targetQty)}${task.unit || ""}`);
-
-        // Par level + stock counted lines (HEADING3) immediately after the item heading
-        idx = insertParStockLines_(body, idx, task);
-
-        const scalerLink = getScalerLink_(task.recipeId);
-        if (scalerLink) {
-          const scalerPara = body.insertParagraph(idx++, "");
-          scalerPara.setFontFamily("Avenir");
-          scalerPara.appendText("📐 ").setFontSize(10).setFontFamily("Avenir");
-          scalerPara.appendText("Scale this recipe").setLinkUrl(scalerLink).setFontSize(10).setForegroundColor("#007AFF").setFontFamily("Avenir");
-          body.insertParagraph(idx++, "");
-        }
-
-        const lines = task.recipeId ? (linesByRecipeId[task.recipeId] || []) : [];
-        if (!lines.length) {
-          body.insertParagraph(idx++, task.recipeId ? "No recipe lines found." : "No recipe linked.").setFontFamily("Avenir");
-        } else {
-          lines.forEach((ln) => {
-            const comp = itemsById[ln.itemId];
-            const compName = comp ? String(comp.fields[CFG.airtable.fields.itemName] || "(Unnamed Item)").replace(/[\r\n]+/g, " ").trim() : "(Unknown Item)";
-            const compUnit = comp ? cellToText_(comp.fields[CFG.airtable.fields.itemUnit]) : "";
-            const total = ln.qtyPerBatch * (task.batchesNeeded || 1);
-            if (!Number.isFinite(total) || total === 0) return;
-            const bulletText = `${compName} ${formatQtyWithBuffer_(total, compUnit)}`.trim();
-            const bulletPara = body.insertParagraph(idx++, bulletText);
-            bulletPara.setIndentStart(36).setFontFamily("Avenir");
-            appendTextWithBoldUnderline_(bulletPara, bulletText, `${fmtQty_(total)}${compUnit || ""}`);
-          });
-        }
-
-        if ((task.method || "").trim()) {
-          const spacerPara = body.insertParagraph(idx++, "");
-
-          const methodHead = body.insertParagraph(idx++, "Method:");
-          methodHead.setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
-
-          task.method.split("\n").forEach((line) => {
-            const txt = line.trim();
-            if (txt) {
-              body.insertParagraph(idx++, txt).setFontFamily("Avenir");
-            }
-          });
-        }
-
-        if ((task.notes || "").trim()) {
-          const notesHead = body.insertParagraph(idx++, "Notes:");
-          notesHead.editAsText().setBold(true).setFontFamily("Avenir");
-
-          task.notes.split("\n").forEach((line) => {
-            const txt = line.trim();
-            if (txt) {
-              body.insertParagraph(idx++, txt).setFontFamily("Avenir");
-            }
-          });
-        }
-
+        idx = insertItemBlock_(body, idx, task, linesByRecipeId, itemsById, {
+          headingLevel: DocumentApp.ParagraphHeading.HEADING1,
+          showScaler: true,
+          pageBreak: i > 0,
+        });
       });
     }
   } else {
+    // NESTED MODEL: sub-recipes grouped under parent batches
     let idx = insertIndex;
+    const s = CFG.docStyle;
     const printedSub = new Set();
 
     batchesWithSubRecipes.forEach((batch, batchIdx) => {
-      if (batchIdx > 0) body.insertHorizontalRule(idx++);
-      if (batchIdx > 0) body.insertPageBreak(idx++);
+      if (batchIdx > 0) {
+        body.insertHorizontalRule(idx++);
+        body.insertPageBreak(idx++);
+      }
 
+      // Parent batch heading with brand color
       const batchPara = body.insertParagraph(idx++, batch.itemName);
-      batchPara.setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
-      const batchToMakeText = `To Make: ${formatQtyWithBuffer_(batch.targetQty, batch.unit)}`.trim();
+      batchPara.setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily(s.font);
+      batchPara.editAsText().setForegroundColor(s.colors.primary);
+      const batchToMakeText = ("To Make: " + formatQtyWithBuffer_(batch.targetQty, batch.unit)).trim();
       const batchToMakePara = body.insertParagraph(idx++, batchToMakeText);
-      batchToMakePara.setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
-      const batchBaseQty = `${fmtQty_(batch.targetQty)}${batch.unit || ""}`;
-      appendTextWithBoldUnderline_(batchToMakePara, batchToMakeText, batchBaseQty);
+      batchToMakePara.setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily(s.font);
+      batchToMakePara.editAsText().setForegroundColor(s.colors.primaryDark);
+      appendTextWithBoldUnderline_(batchToMakePara, batchToMakeText, fmtQty_(batch.targetQty) + (batch.unit || ""));
 
-      // Par level + stock counted lines (HEADING3) immediately after the batch heading
       idx = insertParStockLines_(body, idx, batch);
 
       const requiredSubTasks = getSubRecipeRequirements_(batch, linesByRecipeId, itemsById, subTasksByItemId);
@@ -330,97 +225,25 @@ function createIngredientPrepDocFromTemplate_(folder, title, dateFormatted, runL
         const subId = subTask.itemId;
 
         if (printedSub.has(subId)) {
-          const seeAboveText = `See above: ${subTask.itemName} ${formatQtyWithBuffer_(subTask.targetQty, subTask.unit)}`.trim();
+          const seeAboveText = ("See above: " + subTask.itemName + " " + formatQtyWithBuffer_(subTask.targetQty, subTask.unit)).trim();
           const li = body.insertListItem(idx++, seeAboveText);
-          li.setGlyphType(DocumentApp.GlyphType.BULLET).setFontFamily("Avenir");
-
-          const seeAboveBaseQty = `${fmtQty_(subTask.targetQty)}${subTask.unit || ""}`;
-          appendTextWithBoldUnderline_(li, seeAboveText, seeAboveBaseQty);
+          li.setGlyphType(DocumentApp.GlyphType.BULLET).setFontFamily(s.font);
+          appendTextWithBoldUnderline_(li, seeAboveText, fmtQty_(subTask.targetQty) + (subTask.unit || ""));
           return;
         }
 
         printedSub.add(subId);
 
-        const subPara = body.insertParagraph(idx++, subTask.itemName);
-        subPara.setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
-        const subToMakeText = `To Make: ${formatQtyWithBuffer_(subTask.targetQty, subTask.unit)}`.trim();
-        const subToMakePara = body.insertParagraph(idx++, subToMakeText);
-        subToMakePara.setFontFamily("Avenir").setFontSize(12);
-        const subBaseQty = `${fmtQty_(subTask.targetQty)}${subTask.unit || ""}`;
-        appendTextWithBoldUnderline_(subToMakePara, subToMakeText, subBaseQty);
-
-        // Add scaler link for sub-recipe if configured
-        const subScalerLink = getScalerLink_(subTask.recipeId);
-        if (subScalerLink) {
-          const scalerPara = body.insertParagraph(idx++, "");
-          scalerPara.setFontFamily("Avenir");
-          scalerPara.appendText("📐 ").setFontSize(10).setFontFamily("Avenir");
-          scalerPara.appendText("Scale this recipe").setLinkUrl(subScalerLink).setFontSize(10).setForegroundColor("#007AFF").setFontFamily("Avenir");
-          body.insertParagraph(idx++, "");
-        }
-
-        if (!subTask.recipeId) {
-          const li = body.insertListItem(idx++, "No recipe linked.");
-          li.setGlyphType(DocumentApp.GlyphType.BULLET).setFontFamily("Avenir");
-          return;
-        }
-
-        const subLines = linesByRecipeId[subTask.recipeId] || [];
-        if (!subLines.length) {
-          const li = body.insertListItem(idx++, "No recipe lines found.");
-          li.setGlyphType(DocumentApp.GlyphType.BULLET).setFontFamily("Avenir");
-        } else {
-          subLines.forEach((ln) => {
-            const comp = itemsById[ln.itemId];
-            const compName = comp ? String(comp.fields[CFG.airtable.fields.itemName] || "(Unnamed Item)").replace(/[\r\n]+/g, " ").trim() : "(Unknown Item)";
-            const compUnit = comp ? cellToText_(comp.fields[CFG.airtable.fields.itemUnit]) : "";
-
-            const total = ln.qtyPerBatch * (subTask.batchesNeeded || 0);
-            if (!Number.isFinite(total) || total === 0) return;
-
-            const bulletText = `${compName} ${formatQtyWithBuffer_(total, compUnit)}`.trim();
-            const li = body.insertListItem(idx++, bulletText);
-            li.setGlyphType(DocumentApp.GlyphType.BULLET).setFontFamily("Avenir");
-
-            const bulletBaseQty = `${fmtQty_(total)}${compUnit || ""}`;
-            appendTextWithBoldUnderline_(li, bulletText, bulletBaseQty);
-          });
-        }
-
-        if ((subTask.method || "").trim()) {
-          const spacerPara = body.insertParagraph(idx++, "");
-
-          const methodHead = body.insertParagraph(idx++, "Method:");
-          methodHead.setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
-
-          const methodLines = String(subTask.method || "").split(/\r?\n/);
-          methodLines.forEach((ln) => {
-            const txt = ln.trim();
-            if (txt) {
-              body.insertParagraph(idx++, txt).setFontFamily("Avenir");
-            }
-          });
-        }
-
-        if ((subTask.notes || "").trim()) {
-          const notesHead = body.insertParagraph(idx++, "Notes:");
-          notesHead.editAsText().setBold(true).setFontFamily("Avenir");
-
-          const noteLines = String(subTask.notes || "").split(/\r?\n/);
-          noteLines.forEach((ln) => {
-            const txt = ln.trim();
-            if (txt) {
-              body.insertParagraph(idx++, txt).setFontFamily("Avenir");
-            }
-          });
-        }
+        // Render sub-recipe via insertItemBlock_ at HEADING2 level
+        idx = insertItemBlock_(body, idx, subTask, linesByRecipeId, itemsById, {
+          headingLevel: DocumentApp.ParagraphHeading.HEADING2,
+          showScaler: true,
+          pageBreak: false,
+        });
       });
-
     });
 
-    // Garnish & Other items have no parent Batch and no sub-recipe requirements, so they
-    // are not captured by the batchesWithSubRecipes loop above. Render them as a standalone
-    // section at the end of the document.
+    // Garnish & Other section
     const garnishOtherTasks = batchTasks.filter(
       (t) => CFG.airtable.itemTypes.ingredientPrepOnly.has(t.itemType)
     );
@@ -429,64 +252,15 @@ function createIngredientPrepDocFromTemplate_(folder, title, dateFormatted, runL
       body.insertPageBreak(idx++);
 
       const garnishHeadPara = body.insertParagraph(idx++, "Garnish & Other");
-      garnishHeadPara.setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
+      garnishHeadPara.setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily(s.font);
+      garnishHeadPara.editAsText().setForegroundColor(s.colors.primary);
 
       garnishOtherTasks.forEach((task) => {
-        const garnishPara = body.insertParagraph(idx++, task.itemName);
-        garnishPara.setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
-        const garnishToMakeText = `To Make: ${formatQtyWithBuffer_(task.targetQty, task.unit)}`.trim();
-        const garnishToMakePara = body.insertParagraph(idx++, garnishToMakeText);
-        garnishToMakePara.setFontFamily("Avenir").setFontSize(12);
-        appendTextWithBoldUnderline_(garnishToMakePara, garnishToMakeText, `${fmtQty_(task.targetQty)}${task.unit || ""}`);
-
-        // Par level + stock counted lines (HEADING3) immediately after the item heading
-        idx = insertParStockLines_(body, idx, task);
-
-        const scalerLink = getScalerLink_(task.recipeId);
-        if (scalerLink) {
-          const scalerPara = body.insertParagraph(idx++, "");
-          scalerPara.setFontFamily("Avenir");
-          scalerPara.appendText("📐 ").setFontSize(10).setFontFamily("Avenir");
-          scalerPara.appendText("Scale this recipe").setLinkUrl(scalerLink).setFontSize(10).setForegroundColor("#007AFF").setFontFamily("Avenir");
-          body.insertParagraph(idx++, "");
-        }
-
-        const lines = task.recipeId ? (linesByRecipeId[task.recipeId] || []) : [];
-        if (!lines.length) {
-          const li = body.insertListItem(idx++, task.recipeId ? "No recipe lines found." : "No recipe linked.");
-          li.setGlyphType(DocumentApp.GlyphType.BULLET).setFontFamily("Avenir");
-        } else {
-          lines.forEach((ln) => {
-            const comp = itemsById[ln.itemId];
-            const compName = comp ? String(comp.fields[CFG.airtable.fields.itemName] || "(Unnamed Item)").replace(/[\r\n]+/g, " ").trim() : "(Unknown Item)";
-            const compUnit = comp ? cellToText_(comp.fields[CFG.airtable.fields.itemUnit]) : "";
-            const total = ln.qtyPerBatch * (task.batchesNeeded || 1);
-            if (!Number.isFinite(total) || total === 0) return;
-            const bulletText = `${compName} ${formatQtyWithBuffer_(total, compUnit)}`.trim();
-            const li = body.insertListItem(idx++, bulletText);
-            li.setGlyphType(DocumentApp.GlyphType.BULLET).setFontFamily("Avenir");
-            appendTextWithBoldUnderline_(li, bulletText, `${fmtQty_(total)}${compUnit || ""}`);
-          });
-        }
-
-        if ((task.method || "").trim()) {
-          body.insertParagraph(idx++, "");
-          const methodHead = body.insertParagraph(idx++, "Method:");
-          methodHead.setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
-          String(task.method || "").split(/\r?\n/).forEach((ln) => {
-            const txt = ln.trim();
-            if (txt) body.insertParagraph(idx++, txt).setFontFamily("Avenir");
-          });
-        }
-
-        if ((task.notes || "").trim()) {
-          const notesHead = body.insertParagraph(idx++, "Notes:");
-          notesHead.editAsText().setBold(true).setFontFamily("Avenir");
-          String(task.notes || "").split(/\r?\n/).forEach((ln) => {
-            const txt = ln.trim();
-            if (txt) body.insertParagraph(idx++, txt).setFontFamily("Avenir");
-          });
-        }
+        idx = insertItemBlock_(body, idx, task, linesByRecipeId, itemsById, {
+          headingLevel: DocumentApp.ParagraphHeading.HEADING2,
+          showScaler: true,
+          pageBreak: false,
+        });
       });
     }
   }
@@ -754,16 +528,8 @@ function exportCombinedOrderingDoc_() {
       RUN_LABEL: sessionName,
       STAFF_NAME: countedBy,
     });
-    // Remove {{CONTENT}} marker
-    const contentMarker = "{{CONTENT}}";
-    const sr = doc.getBody().findText(contentMarker);
-    if (sr) {
-      let parent = sr.getElement().getParent();
-      while (parent.getParent() && parent.getParent().getType() !== DocumentApp.ElementType.BODY_SECTION) {
-        parent = parent.getParent();
-      }
-      doc.getBody().removeChild(parent);
-    }
+    // Remove {{CONTENT}} marker using shared helper
+    findContentInsertIndex_(doc.getBody());
   } else {
     trashExistingByName_(orderFolder, docTitle);
     doc = DocumentApp.create(docTitle);
@@ -772,90 +538,107 @@ function exportCombinedOrderingDoc_() {
   }
 
   const body = doc.getBody();
+  const s = CFG.docStyle;
+
   if (!templateId || !templateExists_(templateId)) {
     body.clearContent();
-    body.appendParagraph(docTitle).setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
+    var titlePara = body.appendParagraph(docTitle);
+    titlePara.setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily(s.font);
+    titlePara.editAsText().setForegroundColor(s.colors.primary);
   }
 
-  // Subtitle lines
-  body.appendParagraph(`Counted by: ${countedBy}`).setHeading(DocumentApp.ParagraphHeading.SUBTITLE).setFontFamily("Avenir");
-  body.appendParagraph(`Session: ${sessionName}`).setFontFamily("Avenir");
+  // Summary info table (append mode — build as array, use appendTable)
+  var summaryPairs = [
+    ["Document", "Ordering Run Sheet"],
+    ["Session", sessionName],
+    ["Counted By", countedBy],
+    ["Suppliers", String(supplierMap.size)],
+    ["Stock Items", String(orders.length)],
+    ["Prep Items", String(prepOnlyRows.length)],
+  ];
+  var summaryTable = body.appendTable(summaryPairs);
+  summaryTable.setBorderColor(s.table.borderColor);
+  summaryTable.setBorderWidth(0.5);
+  s.table.summaryWidths.forEach(function(w, i) { summaryTable.setColumnWidth(i, w); });
+  for (var ri = 0; ri < summaryTable.getNumRows(); ri++) {
+    var srow = summaryTable.getRow(ri);
+    srow.getCell(0).setBackgroundColor("#F9F9F9").setPaddingTop(3).setPaddingBottom(3).setPaddingLeft(8).setPaddingRight(4);
+    srow.getCell(0).editAsText().setFontFamily(s.font).setFontSize(9).setBold(true).setForegroundColor(s.colors.mutedText);
+    srow.getCell(1).setBackgroundColor("#FFFFFF").setPaddingTop(3).setPaddingBottom(3).setPaddingLeft(8).setPaddingRight(4);
+    srow.getCell(1).editAsText().setFontFamily(s.font).setFontSize(9).setForegroundColor(s.colors.bodyText);
+  }
 
   // Feedback link
   appendFeedbackLink_(body, null, docTitle, "Ordering");
+  body.appendParagraph("").setFontFamily(s.font);
 
-  body.appendParagraph("").setFontFamily("Avenir"); // spacer
-
-  // ── 8. Supplier-grouped bar stock orders ──
-  const sortedSuppliers = Array.from(supplierMap.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]));
-
-  sortedSuppliers.forEach(([supplierName, rows]) => {
-    rows.sort((a, b) => a.itemName.localeCompare(b.itemName));
-
-    body.appendParagraph(supplierName).setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
-
-    rows.forEach(r => {
-      const displayUnit = (r.unit && r.unit !== "ml") ? ` ${r.unit}` : "x Bottles";
-      const line = `${r.itemName}  |  ${fmtQty_(r.combinedQty)}${displayUnit}`;
-      const li = appendBullet_(body, line);
-      li.setFontFamily("Avenir");
-
-      // Bold the order quantity
-      const boldText = `${fmtQty_(r.combinedQty)}${displayUnit}`;
-      appendTextWithBoldUnderline_(li, line, boldText);
+  // Helper: build ordering table rows from data
+  function buildOrderRows_(dataRows, qtyField) {
+    var tableRows = [];
+    dataRows.forEach(function(r) {
+      var qty = r[qtyField || "combinedQty"] || r.qty || 0;
+      var displayUnit = (r.unit && r.unit !== "ml") ? r.unit : "Bottles";
+      tableRows.push([r.itemName, fmtQty_(qty) + "x", displayUnit, "\u2610"]);
     });
-  });
-
-  // ── 9. Items below par — no supplier assigned ──
-  if (noSupplierRows.length) {
-    noSupplierRows.sort((a, b) => a.itemName.localeCompare(b.itemName));
-    body.appendParagraph("").setFontFamily("Avenir");
-    body.appendParagraph("ITEMS BELOW PAR — NO SUPPLIER").setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
-
-    noSupplierRows.forEach(r => {
-      const displayUnit = (r.unit && r.unit !== "ml") ? ` ${r.unit}` : "x Bottles";
-      const line = `${r.itemName}  |  ${fmtQty_(r.combinedQty)}${displayUnit}`;
-      const li = appendBullet_(body, line);
-      li.setFontFamily("Avenir");
-    });
+    return tableRows;
   }
 
-  // ── 9b/9c. Staff-specific prep orders (supplier-grouped) ──
-  // Shared renderer for staff prep sections
+  var orderColWidths = [s.table.colWidths.item, s.table.colWidths.qty, s.table.colWidths.unit, s.table.colWidths.check];
+
+  // ── 8. Supplier-grouped bar stock orders ──
+  var sortedSuppliers = Array.from(supplierMap.entries())
+    .sort(function(a, b) { return a[0].localeCompare(b[0]); });
+
+  sortedSuppliers.forEach(function(entry) {
+    var supplierName = entry[0], rows = entry[1];
+    rows.sort(function(a, b) { return a.itemName.localeCompare(b.itemName); });
+
+    var heading = body.appendParagraph(supplierName);
+    heading.setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily(s.font);
+    heading.editAsText().setForegroundColor(s.colors.primary);
+
+    appendDataTable_(body, ["Item", "Qty", "Unit", "\u2610"], buildOrderRows_(rows, "combinedQty"), orderColWidths);
+  });
+
+  // ── 9. Items below par — no supplier ──
+  if (noSupplierRows.length) {
+    noSupplierRows.sort(function(a, b) { return a.itemName.localeCompare(b.itemName); });
+    body.appendParagraph("");
+    var noSupHead = body.appendParagraph("ITEMS BELOW PAR \u2014 NO SUPPLIER");
+    noSupHead.setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily(s.font);
+    noSupHead.editAsText().setForegroundColor(s.colors.primary);
+
+    appendDataTable_(body, ["Item", "Qty", "Unit", "\u2610"], buildOrderRows_(noSupplierRows, "combinedQty"), orderColWidths);
+  }
+
+  // ── 9b/9c. Staff-specific prep orders ──
   function renderStaffPrepSection_(body, sectionTitle, subtitle, groups) {
-    body.appendParagraph("").setFontFamily("Avenir");
-    body.appendParagraph(sectionTitle).setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
-    body.appendParagraph(subtitle).setFontFamily("Avenir");
+    body.appendParagraph("");
+    var sHead = body.appendParagraph(sectionTitle);
+    sHead.setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily(s.font);
+    sHead.editAsText().setForegroundColor(s.colors.primary);
+    body.appendParagraph(subtitle).setFontFamily(s.font);
 
-    const sortedSuppliers = Array.from(groups.grouped.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]));
+    var sortedSups = Array.from(groups.grouped.entries())
+      .sort(function(a, b) { return a[0].localeCompare(b[0]); });
 
-    sortedSuppliers.forEach(([supplierName, rows]) => {
-      rows.sort((a, b) => a.itemName.localeCompare(b.itemName));
-      body.appendParagraph(supplierName).setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
+    sortedSups.forEach(function(entry) {
+      var supName = entry[0], rows = entry[1];
+      rows.sort(function(a, b) { return a.itemName.localeCompare(b.itemName); });
+      var subHead = body.appendParagraph(supName);
+      subHead.setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily(s.font);
+      subHead.editAsText().setForegroundColor(s.colors.primaryDark);
 
-      rows.forEach(r => {
-        const displayUnit = (r.unit && r.unit !== "ml") ? ` ${r.unit}` : "x Bottles";
-        const line = `${r.itemName}  |  ${fmtQty_(r.qty)}${displayUnit}`;
-        const li = appendBullet_(body, line);
-        li.setFontFamily("Avenir");
-        const boldText = `${fmtQty_(r.qty)}${displayUnit}`;
-        appendTextWithBoldUnderline_(li, line, boldText);
-      });
+      appendDataTable_(body, ["Item", "Qty", "Unit", "\u2610"], buildOrderRows_(rows, "qty"), orderColWidths);
     });
 
     if (groups.noSupplier.length) {
-      groups.noSupplier.sort((a, b) => a.itemName.localeCompare(b.itemName));
-      body.appendParagraph("NO SUPPLIER").setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
-      groups.noSupplier.forEach(r => {
-        const displayUnit = (r.unit && r.unit !== "ml") ? ` ${r.unit}` : "x Bottles";
-        const line = `${r.itemName}  |  ${fmtQty_(r.qty)}${displayUnit}`;
-        const li = appendBullet_(body, line);
-        li.setFontFamily("Avenir");
-        const boldText = `${fmtQty_(r.qty)}${displayUnit}`;
-        appendTextWithBoldUnderline_(li, line, boldText);
-      });
+      groups.noSupplier.sort(function(a, b) { return a.itemName.localeCompare(b.itemName); });
+      var nsHead = body.appendParagraph("NO SUPPLIER");
+      nsHead.setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily(s.font);
+      nsHead.editAsText().setForegroundColor(s.colors.primaryDark);
+
+      appendDataTable_(body, ["Item", "Qty", "Unit", "\u2610"], buildOrderRows_(groups.noSupplier, "qty"), orderColWidths);
     }
   }
 
@@ -873,28 +656,27 @@ function exportCombinedOrderingDoc_() {
       bladeGroups);
   }
 
-  // ── 10. Prep-only items (non-bar-stock from Ingredient Requirements, excluding Blade) ──
+  // ── 10. Prep-only items ──
   if (otherPrepRows.length) {
-    otherPrepRows.sort((a, b) => a.itemName.localeCompare(b.itemName));
-    body.appendParagraph("").setFontFamily("Avenir");
-    body.appendParagraph("PREP-ONLY ITEMS (no bar stock count)").setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily("Avenir");
-    body.appendParagraph("These items are needed for prep but are not tracked in bar stock.").setFontFamily("Avenir");
+    otherPrepRows.sort(function(a, b) { return a.itemName.localeCompare(b.itemName); });
+    body.appendParagraph("");
+    var poHead = body.appendParagraph("PREP-ONLY ITEMS (no bar stock count)");
+    poHead.setHeading(DocumentApp.ParagraphHeading.HEADING1).setFontFamily(s.font);
+    poHead.editAsText().setForegroundColor(s.colors.primary);
+    body.appendParagraph("These items are needed for prep but are not tracked in bar stock.").setFontFamily(s.font);
 
-    otherPrepRows.forEach(r => {
-      const displayUnit = (r.unit && r.unit !== "ml") ? ` ${r.unit}` : "x Bottles";
-      const line = `${r.itemName}  |  ${fmtQty_(r.qty)}${displayUnit}` +
-        (r.supplier ? `  |  Supplier: ${r.supplier}` : "");
-      const li = appendBullet_(body, line);
-      li.setFontFamily("Avenir");
-
-      const boldText = `${fmtQty_(r.qty)}${displayUnit}`;
-      appendTextWithBoldUnderline_(li, line, boldText);
+    var prepTableRows = [];
+    otherPrepRows.forEach(function(r) {
+      var displayUnit = (r.unit && r.unit !== "ml") ? r.unit : "Bottles";
+      var supplierNote = r.supplier ? " (" + r.supplier + ")" : "";
+      prepTableRows.push([r.itemName + supplierNote, fmtQty_(r.qty) + "x", displayUnit, "\u2610"]);
     });
+    appendDataTable_(body, ["Item", "Qty", "Unit", "\u2610"], prepTableRows, orderColWidths);
   }
 
   // ── 11. Empty state ──
   if (!supplierMap.size && !noSupplierRows.length && !andieRows.length && !bladeRows.length && !otherPrepRows.length) {
-    body.appendParagraph("No ordering lines found.").setFontFamily("Avenir");
+    body.appendParagraph("No ordering lines found.").setFontFamily(s.font);
   }
 
   doc.saveAndClose();

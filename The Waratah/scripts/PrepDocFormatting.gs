@@ -135,8 +135,6 @@ function removeAllTemplateElements_(body) {
     "{{HAS_",
     "{{IS_",
     "{{UNASSIGNED",
-    "INGREDIENTS",  // Template label text
-    "METHOD",       // Template label text
   ];
 
   const toRemove = [];
@@ -287,7 +285,7 @@ function appendTextWithBoldUnderline_(paragraph, fullText, boldUnderlineText) {
   const endIndex = startIndex + boldUnderlineText.length - 1;
   text.setBold(startIndex, endIndex, true);
   text.setUnderline(startIndex, endIndex, true);
-  text.setFontFamily("Avenir");
+  text.setFontFamily(CFG.docStyle.font);
 }
 
 /**
@@ -366,10 +364,11 @@ function insertFeedbackLink_(body, insertIndex, prepRunId, docType, staffRole) {
   const feedbackLink = getFeedbackLink_(prepRunId, docType, staffRole);
   if (!feedbackLink) return insertIndex;
 
+  var s = CFG.docStyle;
   const para = body.insertParagraph(insertIndex, "");
-  para.setFontFamily("Avenir");
-  para.appendText("Have feedback? ").setFontSize(10).setForegroundColor("#666666").setFontFamily("Avenir");
-  para.appendText("Submit here").setLinkUrl(feedbackLink).setFontSize(10).setForegroundColor("#007AFF").setUnderline(true).setFontFamily("Avenir");
+  para.setFontFamily(s.font);
+  para.appendText("Have feedback? ").setFontSize(10).setForegroundColor(s.colors.mutedText).setFontFamily(s.font);
+  para.appendText("Submit here").setLinkUrl(feedbackLink).setFontSize(10).setForegroundColor(s.colors.linkColor).setUnderline(true).setFontFamily(s.font);
   para.setSpacingAfter(8);
 
   return insertIndex + 1;
@@ -386,39 +385,92 @@ function appendFeedbackLink_(body, prepRunId, docType, staffRole) {
   const feedbackLink = getFeedbackLink_(prepRunId, docType, staffRole);
   if (!feedbackLink) return;
 
+  var s = CFG.docStyle;
   body.appendParagraph(""); // Spacer
   const para = body.appendParagraph("");
-  para.setFontFamily("Avenir");
-  para.appendText("Have feedback? ").setFontSize(10).setForegroundColor("#666666").setFontFamily("Avenir");
-  para.appendText("Submit here").setLinkUrl(feedbackLink).setFontSize(10).setForegroundColor("#007AFF").setUnderline(true).setFontFamily("Avenir");
+  para.setFontFamily(s.font);
+  para.appendText("Have feedback? ").setFontSize(10).setForegroundColor(s.colors.mutedText).setFontFamily(s.font);
+  para.appendText("Submit here").setLinkUrl(feedbackLink).setFontSize(10).setForegroundColor(s.colors.linkColor).setUnderline(true).setFontFamily(s.font);
 }
 
 /**
- * Append an "Additional Tasks" section (HEADING2 + 10 blank lines) using appendParagraph.
+ * Append an "Additional Tasks" section (HEADING2 + 7 checkbox lines) using appendParagraph.
  * Used in programmatic/append path for Batching and Ingredient Prep docs.
  */
 function appendAdditionalTasks_(body) {
-  body.appendParagraph("Additional Tasks")
-    .setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
+  var s = CFG.docStyle;
+  var heading = body.appendParagraph("Additional Tasks");
+  heading.setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily(s.font);
+  heading.editAsText().setForegroundColor(s.colors.primaryDark);
   for (var i = 0; i < 7; i++) {
-    body.appendListItem("").setGlyphType(DocumentApp.GlyphType.SQUARE_BULLET).setFontFamily("Avenir");
+    var li = body.appendParagraph("\u2610  ");
+    li.setFontFamily(s.font);
+    li.editAsText().setFontFamily(0, 0, s.checkboxFont);
   }
 }
 
 /**
- * Insert an "Additional Tasks" section (HEADING2 + 10 blank lines) using insertParagraph.
+ * Insert an "Additional Tasks" section (HEADING2 + 7 checkbox lines) using insertParagraph.
  * Used in template/insert-index path for Batching and Ingredient Prep docs.
  * @param {Body} body  Document body
  * @param {number} idx Current insertion index
  * @returns {number}   Updated idx
  */
 function insertAdditionalTasks_(body, idx) {
-  body.insertParagraph(idx++, "Additional Tasks")
-    .setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily("Avenir");
+  var s = CFG.docStyle;
+  var heading = body.insertParagraph(idx++, "Additional Tasks");
+  heading.setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily(s.font);
+  heading.editAsText().setForegroundColor(s.colors.primaryDark);
   for (var i = 0; i < 7; i++) {
-    body.insertListItem(idx++, "").setGlyphType(DocumentApp.GlyphType.SQUARE_BULLET).setFontFamily("Avenir");
+    var li = body.insertParagraph(idx++, "\u2610  ");
+    li.setFontFamily(s.font);
+    li.editAsText().setFontFamily(0, 0, s.checkboxFont);
   }
   return idx;
+}
+
+/**
+ * Append a styled data table (append-mode variant for ordering docs).
+ * @param {Body} body
+ * @param {string[]} headers - Column headers
+ * @param {Array<string[]>} rows - Data rows
+ * @param {number[]} colWidths - Column widths in points
+ */
+function appendDataTable_(body, headers, rows, colWidths) {
+  var s = CFG.docStyle;
+  var allRows = [headers].concat(rows);
+  var table = body.appendTable(allRows);
+
+  table.setBorderColor(s.table.borderColor);
+  table.setBorderWidth(s.table.borderWidth);
+  colWidths.forEach(function(w, i) { table.setColumnWidth(i, w); });
+
+  // Header row
+  var headerRow = table.getRow(0);
+  for (var c = 0; c < headerRow.getNumCells(); c++) {
+    var cell = headerRow.getCell(c);
+    cell.setBackgroundColor(s.table.headerBg);
+    cell.setPaddingTop(s.table.cellPadding).setPaddingBottom(s.table.cellPadding)
+        .setPaddingLeft(s.table.cellPadding + 2).setPaddingRight(s.table.cellPadding);
+    cell.editAsText().setForegroundColor(s.table.headerText)
+        .setBold(true).setFontFamily(s.font).setFontSize(10);
+  }
+
+  // Data rows
+  for (var r = 1; r < table.getNumRows(); r++) {
+    var row = table.getRow(r);
+    var bg = (r % 2 === 0) ? s.table.altRowBg : "#FFFFFF";
+    for (var c2 = 0; c2 < row.getNumCells(); c2++) {
+      var dc = row.getCell(c2);
+      dc.setBackgroundColor(bg);
+      dc.setPaddingTop(3).setPaddingBottom(3).setPaddingLeft(6).setPaddingRight(4);
+      var text = dc.editAsText();
+      text.setFontFamily(s.font).setFontSize(10).setForegroundColor(s.colors.bodyText);
+      if (headers[c2] === "\u2610") {
+        text.setFontFamily(s.checkboxFont);
+      }
+    }
+  }
 }
 
 function appendBullet_(body, text) {
@@ -433,4 +485,213 @@ function appendMultiline_(body, text) {
     const t = ln.trim();
     if (t) body.appendParagraph(t);
   });
+}
+
+/* =========================================================
+ * REDESIGNED FORMATTING HELPERS (2026-03-23)
+ *
+ * Professional document formatting: tables, branded headings,
+ * numbered methods, checkboxes, summary info blocks.
+ * ======================================================= */
+
+/**
+ * Insert a styled data table at idx. Used for ingredient lists and ordering tables.
+ * @param {Body} body
+ * @param {number} idx
+ * @param {string[]} headers - Column headers, e.g. ["Item", "Qty", "Unit", "☐"]
+ * @param {Array<string[]>} rows - Data rows
+ * @param {number[]} colWidths - Column widths in points
+ * @returns {number} updated idx (idx + 1)
+ */
+function insertDataTable_(body, idx, headers, rows, colWidths) {
+  const s = CFG.docStyle;
+  const allRows = [headers, ...rows];
+  const table = body.insertTable(idx, allRows);
+
+  table.setBorderColor(s.table.borderColor);
+  table.setBorderWidth(s.table.borderWidth);
+  colWidths.forEach((w, i) => table.setColumnWidth(i, w));
+
+  // Header row
+  const headerRow = table.getRow(0);
+  for (let c = 0; c < headerRow.getNumCells(); c++) {
+    const cell = headerRow.getCell(c);
+    cell.setBackgroundColor(s.table.headerBg);
+    cell.setPaddingTop(s.table.cellPadding).setPaddingBottom(s.table.cellPadding)
+        .setPaddingLeft(s.table.cellPadding + 2).setPaddingRight(s.table.cellPadding);
+    cell.editAsText().setForegroundColor(s.table.headerText)
+        .setBold(true).setFontFamily(s.font).setFontSize(10);
+  }
+
+  // Data rows (alternating backgrounds)
+  for (let r = 1; r < table.getNumRows(); r++) {
+    const row = table.getRow(r);
+    const bg = (r % 2 === 0) ? s.table.altRowBg : "#FFFFFF";
+    for (let c = 0; c < row.getNumCells(); c++) {
+      const cell = row.getCell(c);
+      cell.setBackgroundColor(bg);
+      cell.setPaddingTop(3).setPaddingBottom(3).setPaddingLeft(6).setPaddingRight(4);
+      const text = cell.editAsText();
+      text.setFontFamily(s.font).setFontSize(10).setForegroundColor(s.colors.bodyText);
+      if (headers[c] === "\u2610") {
+        text.setFontFamily(s.checkboxFont);
+      }
+    }
+  }
+
+  return idx + 1;
+}
+
+/**
+ * Insert a 2-column summary info table (label | value pairs).
+ * @param {Body} body
+ * @param {number} idx
+ * @param {Array<[string, string]>} pairs - [["Date", "Monday, 24 March"], ...]
+ * @returns {number} updated idx
+ */
+function insertSummaryInfo_(body, idx, pairs) {
+  const s = CFG.docStyle;
+  const table = body.insertTable(idx, pairs);
+  table.setBorderColor(s.table.borderColor);
+  table.setBorderWidth(0.5);
+  s.table.summaryWidths.forEach((w, i) => table.setColumnWidth(i, w));
+
+  for (let r = 0; r < table.getNumRows(); r++) {
+    const row = table.getRow(r);
+    // Label column
+    const labelCell = row.getCell(0);
+    labelCell.setBackgroundColor("#F9F9F9");
+    labelCell.setPaddingTop(3).setPaddingBottom(3).setPaddingLeft(8).setPaddingRight(4);
+    labelCell.editAsText().setFontFamily(s.font).setFontSize(9).setBold(true)
+        .setForegroundColor(s.colors.mutedText);
+    // Value column
+    const valCell = row.getCell(1);
+    valCell.setBackgroundColor("#FFFFFF");
+    valCell.setPaddingTop(3).setPaddingBottom(3).setPaddingLeft(8).setPaddingRight(4);
+    valCell.editAsText().setFontFamily(s.font).setFontSize(9)
+        .setForegroundColor(s.colors.bodyText);
+  }
+
+  return idx + 1;
+}
+
+/**
+ * Insert method steps as a numbered list.
+ * @param {Body} body
+ * @param {number} idx
+ * @param {string} methodText - Newline-separated method steps
+ * @returns {number} updated idx
+ */
+function insertNumberedMethod_(body, idx, methodText) {
+  if (!(methodText || "").trim()) return idx;
+
+  body.insertParagraph(idx++, "");
+  const heading = body.insertParagraph(idx++, "Method:");
+  heading.setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily(CFG.docStyle.font);
+  heading.editAsText().setForegroundColor(CFG.docStyle.colors.primaryDark);
+
+  String(methodText).split(/\r?\n/).forEach((line) => {
+    const txt = line.trim();
+    if (txt) {
+      const li = body.insertListItem(idx++, txt);
+      li.setGlyphType(DocumentApp.GlyphType.NUMBER).setFontFamily(CFG.docStyle.font);
+    }
+  });
+
+  return idx;
+}
+
+/**
+ * Insert a complete item block: heading, qty, scaler, ingredient table, method, notes.
+ * Consolidates the 5 previously copy-pasted rendering blocks.
+ *
+ * @param {Body} body
+ * @param {number} idx
+ * @param {Object} task - {itemName, targetQty, unit, recipeId, method, notes, batchesNeeded}
+ * @param {Object} linesByRecipeId - Recipe lines map
+ * @param {Object} itemsById - Items map
+ * @param {Object} opts - {headingLevel, showScaler, pageBreak}
+ * @returns {number} updated idx
+ */
+function insertItemBlock_(body, idx, task, linesByRecipeId, itemsById, opts) {
+  const s = CFG.docStyle;
+  const level = (opts && opts.headingLevel) || DocumentApp.ParagraphHeading.HEADING1;
+
+  // Page break before item (except first)
+  if (opts && opts.pageBreak) {
+    body.insertHorizontalRule(idx++);
+    body.insertPageBreak(idx++);
+  }
+
+  // Item name heading with brand color
+  const namePara = body.insertParagraph(idx++, task.itemName);
+  namePara.setHeading(level).setFontFamily(s.font);
+  namePara.editAsText().setForegroundColor(
+    level === DocumentApp.ParagraphHeading.HEADING1 ? s.colors.primary : s.colors.primaryDark
+  );
+
+  // "To Make: qty (buffer)" line
+  const toMakeText = ("To Make: " + formatQtyWithBuffer_(task.targetQty, task.unit)).trim();
+  const toMakePara = body.insertParagraph(idx++, toMakeText);
+  toMakePara.setHeading(DocumentApp.ParagraphHeading.HEADING2).setFontFamily(s.font);
+  toMakePara.editAsText().setForegroundColor(s.colors.primaryDark);
+  const baseQtyText = fmtQty_(task.targetQty) + (task.unit || "");
+  appendTextWithBoldUnderline_(toMakePara, toMakeText, baseQtyText);
+
+  // Par/stock lines (no-op, preserved for API compatibility)
+  idx = insertParStockLines_(body, idx, task);
+
+  // Scaler link
+  if (!opts || opts.showScaler !== false) {
+    const scalerLink = getScalerLink_(task.recipeId);
+    if (scalerLink) {
+      const scalerPara = body.insertParagraph(idx++, "");
+      scalerPara.setFontFamily(s.font);
+      scalerPara.appendText("\uD83D\uDCD0 ").setFontSize(10).setFontFamily(s.font);
+      scalerPara.appendText("Scale this recipe").setLinkUrl(scalerLink)
+        .setFontSize(10).setForegroundColor(s.colors.linkColor).setFontFamily(s.font);
+      body.insertParagraph(idx++, "");
+    }
+  }
+
+  // Ingredient table (replaces bullet list)
+  var lines = task.recipeId ? (linesByRecipeId[task.recipeId] || []) : [];
+  if (lines.length > 0) {
+    var tableHeaders = ["Item", "Qty", "Unit", "\u2610"];
+    var tableRows = [];
+    lines.forEach(function(ln) {
+      var comp = itemsById[ln.itemId];
+      if (!comp) return;
+      var compName = String(comp.fields[CFG.airtable.fields.itemName] || "(Unnamed)")
+        .replace(/[\r\n]+/g, " ").trim();
+      var compUnit = cellToText_(comp.fields[CFG.airtable.fields.itemUnit]) || "";
+      var multiplier = task.batchesNeeded || 1;
+      var total = ln.qtyPerBatch * multiplier;
+      if (!Number.isFinite(total) || total === 0) return;
+      tableRows.push([compName, fmtQty_(total), compUnit, "\u2610"]);
+    });
+
+    if (tableRows.length > 0) {
+      var widths = [s.table.colWidths.item, s.table.colWidths.qty,
+                    s.table.colWidths.unit, s.table.colWidths.check];
+      idx = insertDataTable_(body, idx, tableHeaders, tableRows, widths);
+    }
+  } else if (task.recipeId) {
+    body.insertParagraph(idx++, "No recipe lines found.").setFontFamily(s.font);
+  }
+
+  // Method (numbered steps)
+  idx = insertNumberedMethod_(body, idx, task.method);
+
+  // Notes (bold heading + plain paragraphs)
+  if ((task.notes || "").trim()) {
+    var notesHead = body.insertParagraph(idx++, "Notes:");
+    notesHead.editAsText().setBold(true).setFontFamily(s.font);
+    String(task.notes).split(/\r?\n/).forEach(function(line) {
+      var txt = line.trim();
+      if (txt) body.insertParagraph(idx++, txt).setFontFamily(s.font);
+    });
+  }
+
+  return idx;
 }
