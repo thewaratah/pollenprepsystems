@@ -2949,3 +2949,101 @@ function processOrderingExportRequests() {
     lock.releaseLock();
   }
 }
+
+// =============================================================================
+// HEALTH CHECK — Polling Failure Alerting
+// =============================================================================
+
+/**
+ * Checks that GAS polling triggers exist and no export requests are stalled.
+ * Set up as a separate GAS time-driven trigger (every 30 minutes).
+ *
+ * Alerts to SLACK_WEBHOOK_EV_TEST if:
+ *   - Expected polling triggers are missing
+ *   - Any record has been in REQUESTED state for >15 minutes
+ *
+ * Disable via Script Property: HEALTH_CHECK_ENABLED=false
+ */
+function healthCheck() {
+  const enabled = getOptionalProp_("HEALTH_CHECK_ENABLED");
+  if (enabled === "false") {
+    Logger.log("Health check disabled via HEALTH_CHECK_ENABLED=false");
+    return;
+  }
+
+  const alerts = [];
+
+  // --- Check 1: Verify polling triggers exist ---
+  const triggers = ScriptApp.getProjectTriggers();
+  const triggerFunctions = triggers.map(t => t.getHandlerFunction());
+
+  const expectedPollers = ["processPrepRunExportRequests", "processOrderingExportRequests"];
+  for (const fn of expectedPollers) {
+    if (!triggerFunctions.includes(fn)) {
+      alerts.push(`MISSING TRIGGER: \`${fn}\` — no time-driven trigger found. Export requests will not be processed.`);
+    }
+  }
+
+  // --- Check 2: Check for stalled REQUESTED records (Prep Runs) ---
+  try {
+    const baseId = getAirtableBaseId_();
+    const pat = getAirtablePat_();
+    const stalledMinutes = 15;
+
+    // Check Prep Runs with REQUESTED state
+    const runsFilter = encodeURIComponent('{Export Request State}="REQUESTED"');
+    const runsUrl = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(CFG.airtable.tables.runs)}?filterByFormula=${runsFilter}`;
+    const runsResp = UrlFetchApp.fetch(runsUrl, {
+      headers: { Authorization: `Bearer ${pat}` },
+      muteHttpExceptions: true,
+    });
+
+    if (runsResp.getResponseCode() === 200) {
+      const runs = JSON.parse(runsResp.getContentText()).records || [];
+      for (const run of runs) {
+        const requestedAt = run.fields["Export Requested At"];
+        if (requestedAt) {
+          const ageMs = Date.now() - new Date(requestedAt).getTime();
+          const ageMin = Math.round(ageMs / 60000);
+          if (ageMin > stalledMinutes) {
+            alerts.push(`STALLED PREP RUN: "${run.fields[CFG.airtable.fields.runPrepWeek] || run.id}" has been REQUESTED for ${ageMin} minutes (threshold: ${stalledMinutes}min).`);
+          }
+        }
+      }
+    }
+
+    // Check Count Sessions with REQUESTED ordering export state
+    const sessFilter = encodeURIComponent('{Ordering Export State}="REQUESTED"');
+    const sessUrl = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(CFG.airtable.tables.countSessions)}?filterByFormula=${sessFilter}`;
+    const sessResp = UrlFetchApp.fetch(sessUrl, {
+      headers: { Authorization: `Bearer ${pat}` },
+      muteHttpExceptions: true,
+    });
+
+    if (sessResp.getResponseCode() === 200) {
+      const sessions = JSON.parse(sessResp.getContentText()).records || [];
+      if (sessions.length > 0) {
+        alerts.push(`STALLED ORDERING: ${sessions.length} Count Session(s) stuck in REQUESTED state. Check GAS triggers.`);
+      }
+    }
+  } catch (e) {
+    alerts.push(`HEALTH CHECK ERROR: Could not query Airtable — ${e.message}`);
+  }
+
+  // --- Report ---
+  if (alerts.length === 0) {
+    Logger.log("Health check PASSED — all triggers present, no stalled requests.");
+    return;
+  }
+
+  const alertText = `🚨 *[Waratah] PREP System Health Check Alert*\n\n${alerts.map(a => `• ${a}`).join("\n")}\n\n_Check GAS project triggers and Airtable records._`;
+  Logger.log(`Health check FAILED:\n${alerts.join("\n")}`);
+
+  try {
+    const webhook = getSlackWebhook_(CFG.props.slackEvTest);
+    postToSlack_(webhook, alertText);
+    Logger.log("Alert sent to Slack.");
+  } catch (e) {
+    Logger.log(`Could not send Slack alert: ${e.message}`);
+  }
+}
